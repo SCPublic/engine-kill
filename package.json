@@ -1,18 +1,27 @@
 {
-  "name": "adeptus-titanicus-app",
+  "name": "engine-kill",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/metro-runtime": "^6.1.2",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~54.0.31",
     "expo-status-bar": "~3.0.9",
+    "firebase": "^12.7.0",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-paper": "^5.14.5",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-vector-icons": "^10.3.0",
+    "react-native-web": "^0.21.2",
+    "simple-swizzle": "^0.2.4"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

@@ -1,20 +1,35 @@
+import React from 'react';
+import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+
+import { GameProvider } from './src/context/GameContext';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import HomeScreen from './src/screens/HomeScreen';
+import UnitEditScreen from './src/screens/UnitEditScreen';
+
+const theme = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    background: '#f5f5f5',
+  },
+};
 
 export default function App() {
+  const [activeUnitId, setActiveUnitId] = React.useState<string | null>(null);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <ErrorBoundary>
+      <PaperProvider theme={theme}>
+        <GameProvider>
+          <StatusBar style="dark" />
+          {activeUnitId ? (
+            <UnitEditScreen unitId={activeUnitId} onBack={() => setActiveUnitId(null)} />
+          ) : (
+            <HomeScreen onOpenUnit={(unitId) => setActiveUnitId(unitId)} />
+          )}
+        </GameProvider>
+      </PaperProvider>
+    </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
