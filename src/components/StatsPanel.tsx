@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
   },
