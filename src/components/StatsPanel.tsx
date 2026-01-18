@@ -16,23 +16,23 @@ export default function StatsPanel({ unit, style }: StatsPanelProps) {
       </View>
 
       <View style={styles.statBox}>
-        <Text style={styles.statLabel}>BS</Text>
-        <Text style={styles.statValue}>{unit.stats.ballisticSkill}+</Text>
-      </View>
-
-      <View style={styles.statBox}>
         <Text style={styles.statLabel}>S</Text>
         <Text style={styles.statValue}>{unit.stats.speed}</Text>
       </View>
 
       <View style={styles.statBox}>
-        <Text style={styles.statLabel}>WS</Text>
-        <Text style={styles.statValue}>{unit.stats.weaponSkill}+</Text>
+        <Text style={styles.statLabel}>M</Text>
+        <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
       </View>
 
       <View style={styles.statBox}>
-        <Text style={styles.statLabel}>M</Text>
-        <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
+        <Text style={styles.statLabel}>BS</Text>
+        <Text style={styles.statValue}>{unit.stats.ballisticSkill}+</Text>
+      </View>
+
+      <View style={styles.statBox}>
+        <Text style={styles.statLabel}>WS</Text>
+        <Text style={styles.statValue}>{unit.stats.weaponSkill}+</Text>
       </View>
 
       <View style={styles.statBox}>
