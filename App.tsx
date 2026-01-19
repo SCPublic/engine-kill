@@ -1,6 +1,7 @@
 import React from 'react';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 
 import { GameProvider } from './src/context/GameContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
@@ -17,6 +18,13 @@ const theme = {
 
 export default function App() {
   const [activeUnitId, setActiveUnitId] = React.useState<string | null>(null);
+  const [fontsLoaded] = useFonts({
+    RobotoMono_700Bold,
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <ErrorBoundary>
