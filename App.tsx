@@ -1,6 +1,7 @@
 import React from 'react';
-import { PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { PaperProvider, MD3LightTheme, ActivityIndicator } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
 import { useFonts, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 
 import { GameProvider } from './src/context/GameContext';
@@ -23,7 +24,11 @@ export default function App() {
   });
 
   if (!fontsLoaded) {
-    return null;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
   }
 
   return (

@@ -68,8 +68,8 @@ const styles = StyleSheet.create({
   statLabel: {
     color: '#8be49d',
     fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: 'bold' as 'bold',
+    textAlign: 'center' as 'center',
     fontFamily: 'RobotoMono_700Bold',
   },
   statValueBox: {
@@ -83,8 +83,8 @@ const styles = StyleSheet.create({
   statValue: {
     color: '#9dffb2',
     fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: 'bold' as 'bold',
+    textAlign: 'center' as 'center',
     fontFamily: 'RobotoMono_700Bold',
   },
 });
