@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Unit, Weapon } from '../models/Unit';
+import { Maniple } from '../models/Maniple';
 import { storageService } from '../services/storageService';
 import { unitService } from '../services/unitService';
 import { UnitTemplate, WeaponTemplate } from '../models/UnitTemplate';
+import { ManipleTemplate } from '../models/ManipleTemplate';
+import { manipleTemplates } from '../data/manipleTemplates';
 
 interface GameState {
   units: Unit[];
+  maniples: Maniple[];
   playerId: string | null;
   playerName: string | null;
   isLoading: boolean;
@@ -19,10 +23,15 @@ type GameAction =
   | { type: 'ADD_UNIT'; payload: Unit }
   | { type: 'UPDATE_UNIT'; payload: Unit }
   | { type: 'DELETE_UNIT'; payload: string }
+  | { type: 'LOAD_MANIPLES'; payload: Maniple[] }
+  | { type: 'ADD_MANIPLE'; payload: Maniple }
+  | { type: 'UPDATE_MANIPLE'; payload: Maniple }
+  | { type: 'DELETE_MANIPLE'; payload: string }
   | { type: 'INITIALIZE_PLAYER' };
 
 const initialState: GameState = {
   units: [],
+  maniples: [],
   playerId: null,
   playerName: null,
   isLoading: true, // Explicit boolean, not Boolean() wrapper
@@ -38,6 +47,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, playerName: action.payload };
     case 'LOAD_UNITS':
       return { ...state, units: action.payload };
+    case 'LOAD_MANIPLES':
+      return { ...state, maniples: action.payload };
     case 'ADD_UNIT':
       return { ...state, units: [...state.units, action.payload] };
     case 'UPDATE_UNIT':
@@ -52,6 +63,18 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         units: state.units.filter((u) => u.id !== action.payload),
       };
+    case 'ADD_MANIPLE':
+      return { ...state, maniples: [...state.maniples, action.payload] };
+    case 'UPDATE_MANIPLE':
+      return {
+        ...state,
+        maniples: state.maniples.map((m) => (m.id === action.payload.id ? action.payload : m)),
+      };
+    case 'DELETE_MANIPLE':
+      return {
+        ...state,
+        maniples: state.maniples.filter((m) => m.id !== action.payload),
+      };
     case 'INITIALIZE_PLAYER':
       return state;
     default:
@@ -62,6 +85,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 interface GameContextType {
   state: GameState;
   addUnitFromTemplate: (template: UnitTemplate, name?: string) => Promise<void>;
+  addTitanFromTemplateToManiple: (manipleId: string, template: UnitTemplate, name?: string) => Promise<void>;
   updateUnit: (unit: Unit) => Promise<void>;
   deleteUnit: (unitId: string) => Promise<void>;
   updateVoidShield: (unitId: string, facing: 'front' | 'left' | 'right' | 'rear', value: number) => Promise<void>;
@@ -73,6 +97,15 @@ interface GameContextType {
   updateHeat: (unitId: string, value: number) => Promise<void>;
   updatePlasmaReactor: (unitId: string, value: number) => Promise<void>;
   setPlayerName: (name: string) => Promise<void>;
+
+  // Maniples (WIP)
+  // We'll keep the API small for now; more rules/validation comes later.
+  addManipleFromTemplate: (template: ManipleTemplate, name?: string) => Promise<void>;
+  addManiple: (maniple: Maniple) => Promise<void>;
+  updateManiple: (maniple: Maniple) => Promise<void>;
+  deleteManiple: (manipleId: string) => Promise<void>;
+  addTitanToManiple: (manipleId: string, unitId: string) => Promise<void>;
+  removeTitanFromManiple: (manipleId: string, unitId: string) => Promise<void>;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -218,6 +251,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
         
         console.log('GameProvider: About to dispatch LOAD_UNITS with', migratedUnits.length, 'units');
         dispatch({ type: 'LOAD_UNITS', payload: migratedUnits });
+
+        // Load maniples
+        const maniples = await storageService.loadManiples();
+        dispatch({ type: 'LOAD_MANIPLES', payload: maniples });
+
         console.log('GameProvider: Initialization complete');
       } catch (error) {
         console.error('Error initializing game:', error);
@@ -243,6 +281,32 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await storageService.saveUnits([...state.units, unit]);
   };
 
+  const addTitanFromTemplateToManiple = async (manipleId: string, template: UnitTemplate, name?: string) => {
+    if (!state.playerId) return;
+    if (template.unitType !== 'titan') return;
+
+    const maniple = state.maniples.find((m) => m.id === manipleId);
+    if (!maniple) return;
+    const manipleTemplate = manipleTemplates.find((t) => t.id === maniple.templateId);
+
+    // Enforce maniple constraints before creating the unit
+    if (manipleTemplate) {
+      if (!manipleTemplate.allowedTitanTemplateIds.includes(template.id)) return;
+      if (maniple.titanUnitIds.length >= manipleTemplate.maxTitans) return;
+    }
+
+    const unit = unitService.createUnitFromTemplate(template, state.playerId, name);
+    dispatch({ type: 'ADD_UNIT', payload: unit });
+    await storageService.saveUnits([...state.units, unit]);
+
+    // Attach the new titan to the maniple
+    if (maniple.titanUnitIds.includes(unit.id)) return;
+    const updatedManiple: Maniple = { ...maniple, titanUnitIds: [...maniple.titanUnitIds, unit.id] };
+    dispatch({ type: 'UPDATE_MANIPLE', payload: updatedManiple });
+    const updatedManiples = state.maniples.map((m) => (m.id === updatedManiple.id ? updatedManiple : m));
+    await storageService.saveManiples(updatedManiples);
+  };
+
   const updateUnit = async (unit: Unit) => {
     // Update state first for immediate UI feedback
     dispatch({ type: 'UPDATE_UNIT', payload: unit });
@@ -255,6 +319,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'DELETE_UNIT', payload: unitId });
     const updatedUnits = state.units.filter((u) => u.id !== unitId);
     await storageService.saveUnits(updatedUnits);
+
+    // Also remove unit from any maniples it belongs to (by id)
+    const updatedManiples = state.maniples
+      .map((m) => ({ ...m, titanUnitIds: m.titanUnitIds.filter((id) => id !== unitId) }))
+      .filter((m, idx) => m.titanUnitIds.length !== state.maniples[idx].titanUnitIds.length);
+
+    if (updatedManiples.length > 0) {
+      // Apply only changed maniples into state
+      const merged = state.maniples.map((m) => {
+        const changed = updatedManiples.find((x) => x.id === m.id);
+        return changed ?? m;
+      });
+      dispatch({ type: 'LOAD_MANIPLES', payload: merged });
+      await storageService.saveManiples(merged);
+    }
   };
 
   const updateVoidShield = async (
@@ -415,6 +494,71 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await storageService.savePlayerName(name);
   };
 
+  const addManipleFromTemplate = async (template: ManipleTemplate, name?: string) => {
+    if (!state.playerId) return;
+    const maniple: Maniple = {
+      id: `maniple_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: name?.trim() || template.name,
+      templateId: template.id,
+      playerId: state.playerId,
+      isLocal: true,
+      titanUnitIds: [],
+      createdAt: Date.now(),
+    };
+    await addManiple(maniple);
+  };
+
+  const addManiple = async (maniple: Maniple) => {
+    dispatch({ type: 'ADD_MANIPLE', payload: maniple });
+    await storageService.saveManiples([...state.maniples, maniple]);
+  };
+
+  const updateManiple = async (maniple: Maniple) => {
+    dispatch({ type: 'UPDATE_MANIPLE', payload: maniple });
+    const updated = state.maniples.map((m) => (m.id === maniple.id ? maniple : m));
+    await storageService.saveManiples(updated);
+  };
+
+  const deleteManiple = async (manipleId: string) => {
+    dispatch({ type: 'DELETE_MANIPLE', payload: manipleId });
+    const updated = state.maniples.filter((m) => m.id !== manipleId);
+    await storageService.saveManiples(updated);
+  };
+
+  const addTitanToManiple = async (manipleId: string, unitId: string) => {
+    const maniple = state.maniples.find((m) => m.id === manipleId);
+    const unit = state.units.find((u) => u.id === unitId);
+    if (!maniple || !unit) return;
+    if (unit.unitType !== 'titan') return;
+
+    const template = manipleTemplates.find((t) => t.id === maniple.templateId);
+    if (template && !template.allowedTitanTemplateIds.includes(unit.templateId)) return;
+    if (template && maniple.titanUnitIds.length >= template.maxTitans) return;
+
+    // Enforce one-maniple-per-titan: remove from any other maniple first.
+    const updatedManiples = state.maniples.map((m) => {
+      if (m.id === manipleId) {
+        if (m.titanUnitIds.includes(unitId)) return m;
+        return { ...m, titanUnitIds: [...m.titanUnitIds, unitId] };
+      }
+      if (m.titanUnitIds.includes(unitId)) {
+        return { ...m, titanUnitIds: m.titanUnitIds.filter((id) => id !== unitId) };
+      }
+      return m;
+    });
+
+    dispatch({ type: 'LOAD_MANIPLES', payload: updatedManiples });
+    await storageService.saveManiples(updatedManiples);
+  };
+
+  const removeTitanFromManiple = async (manipleId: string, unitId: string) => {
+    const maniple = state.maniples.find((m) => m.id === manipleId);
+    if (!maniple) return;
+    if (!maniple.titanUnitIds.includes(unitId)) return;
+    const updatedManiple = { ...maniple, titanUnitIds: maniple.titanUnitIds.filter((id) => id !== unitId) };
+    await updateManiple(updatedManiple);
+  };
+
     // Ensure state.isLoading is always a boolean and sanitize all units
     const safeUnits = state.units.map(unit => {
       const sanitized = { ...unit };
@@ -453,6 +597,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         value={{
           state: safeState,
           addUnitFromTemplate,
+          addTitanFromTemplateToManiple,
           updateUnit,
           deleteUnit,
           updateVoidShield,
@@ -464,6 +609,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
           updateHeat,
           updatePlasmaReactor,
           setPlayerName,
+          addManipleFromTemplate,
+          addManiple,
+          updateManiple,
+          deleteManiple,
+          addTitanToManiple,
+          removeTitanFromManiple,
         }}
       >
         {children}
@@ -477,6 +628,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         value={{
           state: { ...initialState, isLoading: false },
           addUnitFromTemplate: async () => {},
+          addTitanFromTemplateToManiple: async () => {},
           updateUnit: async () => {},
           deleteUnit: async () => {},
           updateVoidShield: async () => {},
@@ -488,6 +640,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
           updateHeat: async () => {},
           updatePlasmaReactor: async () => {},
           setPlayerName: async () => {},
+          addManipleFromTemplate: async () => {},
+          addManiple: async () => {},
+          updateManiple: async () => {},
+          deleteManiple: async () => {},
+          addTitanToManiple: async () => {},
+          removeTitanFromManiple: async () => {},
         }}
       >
         {children}
