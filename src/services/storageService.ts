@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Unit } from '../models/Unit';
+import { Maniple } from '../models/Maniple';
 import { STORAGE_KEYS } from '../utils/constants';
 
 function parseBooleanLike(value: unknown, defaultValue: boolean): boolean {
@@ -72,6 +73,36 @@ export const storageService = {
     }
   },
 
+  // Maniples
+  async saveManiples(maniples: Maniple[]): Promise<void> {
+    try {
+      const jsonValue = JSON.stringify(maniples);
+      await AsyncStorage.setItem(STORAGE_KEYS.MANIPLES, jsonValue);
+    } catch (error) {
+      console.error('Error saving maniples:', error);
+      throw error;
+    }
+  },
+
+  async loadManiples(): Promise<Maniple[]> {
+    try {
+      const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.MANIPLES);
+      if (!jsonValue) return [];
+      const maniples = JSON.parse(jsonValue);
+
+      // Defensive parsing / defaults
+      return (Array.isArray(maniples) ? maniples : []).map((m: any) => ({
+        ...m,
+        isLocal: parseIsLocal(m.isLocal),
+        titanUnitIds: Array.isArray(m.titanUnitIds) ? m.titanUnitIds : [],
+        createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
+      }));
+    } catch (error) {
+      console.error('Error loading maniples:', error);
+      return [];
+    }
+  },
+
   // Player ID
   async savePlayerId(playerId: string): Promise<void> {
     try {
@@ -113,6 +144,7 @@ export const storageService = {
     try {
       await AsyncStorage.multiRemove([
         STORAGE_KEYS.UNITS,
+        STORAGE_KEYS.MANIPLES,
         STORAGE_KEYS.PLAYER_ID,
         STORAGE_KEYS.PLAYER_NAME,
       ]);
