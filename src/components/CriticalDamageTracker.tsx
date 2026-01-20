@@ -85,9 +85,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pip: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 2,
     backgroundColor: 'rgba(42, 42, 42, 0.5)',
     justifyContent: 'center',
