@@ -1,6 +1,12 @@
 import { UnitTemplate } from '../models/UnitTemplate';
 
-// Basic Titan templates - these can be expanded with full game data
+// Local Titan templates are now intentionally minimal.
+// We treat BSData (BattleScribe) as the source of truth for catalog-style values
+// (points, weapon stats, void/heat/reactor maxima when available).
+//
+// We keep local data primarily for:
+// - damage tracks / hit tables / critical effects (app-specific UX)
+// - stable weapon IDs + disabled overlay metadata (repair/disabled roll lines)
 export const titanTemplates: UnitTemplate[] = [
   {
     id: 'reaver',
@@ -62,14 +68,15 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'gatling-blaster',
         name: 'Gatling Blaster',
-        points: 0, // Placeholder - will need actual points
-        shortRange: 12,
-        longRange: 24,
-        accuracyShort: 0,
-        accuracyLong: 0,
-        dice: 0, // Placeholder
-        strength: 0, // Placeholder
-        traits: ['Rapid Fire'],
+        // NOTE: weapon stats are sourced from BSData when available.
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
+        traits: [],
         specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
@@ -80,13 +87,13 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'laser-blaster',
         name: 'Laser Blaster',
-        points: 0, // Placeholder
-        shortRange: 18,
-        longRange: 36,
-        accuracyShort: 0,
-        accuracyLong: 0,
-        dice: 0, // Placeholder
-        strength: 0, // Placeholder
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
         traits: [],
         specialRules: [],
         disabledRollLines: [
@@ -101,15 +108,10 @@ export const titanTemplates: UnitTemplate[] = [
     id: 'warlord',
     name: 'Warlord Titan',
     unitType: 'titan',
-    scale: 10,
-    scaleName: 'MAGNIFICUS',
-    basePoints: 385,
     defaultStats: {
-      // TEMP (UI stress test): 8 shield pips
       voidShields: { max: 8 },
       voidShieldSaves: ['3+', '4+', '4+', '4+', '4+', '4+', '4+', 'X'],
       maxHeat: 12,
-      // TEMP (UI stress test): 9 reactor pips
       plasmaReactorMax: 9,
       damage: {
         head: {
@@ -162,14 +164,14 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'volcano-cannon',
         name: 'Volcano Cannon',
-        points: 0, // Placeholder
-        shortRange: 24,
-        longRange: 48,
-        accuracyShort: 0,
-        accuracyLong: 0,
-        dice: 0, // Placeholder
-        strength: 0, // Placeholder
-        traits: ['Devastating'],
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
+        traits: [],
         specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
@@ -180,14 +182,14 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'plasma-annihilator',
         name: 'Plasma Annihilator',
-        points: 0, // Placeholder
-        shortRange: 18,
-        longRange: 36,
-        accuracyShort: 0,
-        accuracyLong: 0,
-        dice: 0, // Placeholder
-        strength: 0, // Placeholder
-        traits: ['Overheat'],
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
+        traits: [],
         specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
@@ -198,13 +200,13 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'apocalypse-missile-launcher',
         name: 'Apocalypse Missile Launcher',
-        points: 0, // Placeholder
-        shortRange: 12,
-        longRange: 40,
-        accuracyShort: 0,
-        accuracyLong: 0,
-        dice: 0, // Placeholder
-        strength: 0, // Placeholder
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
         traits: [],
         specialRules: [],
         disabledRollLines: [
@@ -220,9 +222,6 @@ export const titanTemplates: UnitTemplate[] = [
     id: 'warmaster',
     name: 'Warmaster Titan',
     unitType: 'titan',
-    scale: 12,
-    scaleName: 'MONUMENTUS',
-    basePoints: 850,
     defaultStats: {
       voidShields: { max: 7 },
       voidShieldSaves: ['3+', '3+', '3+', '3+', '4+', '4+', 'X'],
@@ -291,13 +290,13 @@ export const titanTemplates: UnitTemplate[] = [
         id: 'volcano-cannon',
         name: 'Volcano Cannon',
         points: 0,
-        shortRange: 24,
-        longRange: 48,
-        accuracyShort: 0,
-        accuracyLong: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
         dice: 0,
         strength: 0,
-        traits: ['Devastating'],
+        traits: [],
         specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
@@ -309,13 +308,13 @@ export const titanTemplates: UnitTemplate[] = [
         id: 'plasma-annihilator',
         name: 'Plasma Annihilator',
         points: 0,
-        shortRange: 18,
-        longRange: 36,
-        accuracyShort: 0,
-        accuracyLong: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
         dice: 0,
         strength: 0,
-        traits: ['Overheat'],
+        traits: [],
         specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
@@ -327,10 +326,10 @@ export const titanTemplates: UnitTemplate[] = [
         id: 'apocalypse-missile-launcher',
         name: 'Apocalypse Missile Launcher',
         points: 0,
-        shortRange: 12,
-        longRange: 40,
-        accuracyShort: 0,
-        accuracyLong: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
+        accuracyLong: '-',
         dice: 0,
         strength: 0,
         traits: [],
@@ -406,15 +405,15 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'plasma-blastgun',
         name: 'Plasma Blastgun',
-        points: 30,
-        shortRange: 8,
-        longRange: 24,
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
         accuracyShort: '-',
-        accuracyLong: -1,
-        dice: 2,
-        strength: 8,
-        traits: ['Blast{3"}', 'Maximal Fire'],
-        specialRules: ['9+: Weapon Disabled'],
+        accuracyLong: '-',
+        dice: 0,
+        strength: 0,
+        traits: [],
+        specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
           '13+: Detonation {Body, S9}',
@@ -424,15 +423,15 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'vulcan-mega-bolter',
         name: 'Vulcan Mega-Bolter',
-        points: 10,
-        shortRange: 8,
-        longRange: 20,
-        accuracyShort: '+1',
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
+        accuracyShort: '-',
         accuracyLong: '-',
-        dice: 6,
-        strength: 4,
-        traits: ['Rapid'],
-        specialRules: ['9+: Weapon Disabled'],
+        dice: 0,
+        strength: 0,
+        traits: [],
+        specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
           '13+: Detonation {Body, S9}',
@@ -442,15 +441,15 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'turbo-laser-destructor',
         name: 'Turbo Laser Destructor',
-        points: 20,
-        shortRange: 16,
-        longRange: 32,
+        points: 0,
+        shortRange: '-',
+        longRange: '-',
         accuracyShort: '-',
         accuracyLong: '-',
-        dice: 2,
-        strength: 8,
-        traits: ['Shieldbane{Draining}'],
-        specialRules: ['9+: Weapon Disabled'],
+        dice: 0,
+        strength: 0,
+        traits: [],
+        specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
           '13+: Detonation {Body, S9}',
@@ -460,15 +459,15 @@ export const titanTemplates: UnitTemplate[] = [
       {
         id: 'inferno-gun',
         name: 'Inferno Gun',
-        points: 20,
-        shortRange: 'T',
+        points: 0,
+        shortRange: '-',
         longRange: '-',
         accuracyShort: '-',
         accuracyLong: '-',
-        dice: 3,
-        strength: 7,
-        traits: ['Firestorm'],
-        specialRules: ['9+: Weapon Disabled'],
+        dice: 0,
+        strength: 0,
+        traits: [],
+        specialRules: [],
         disabledRollLines: [
           '9-12: Detonation {Body, S7}',
           '13+: Detonation {Body, S9}',

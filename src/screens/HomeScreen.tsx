@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, View, StyleSheet, FlatList } from 'react-native';
+import { Alert, View, StyleSheet, FlatList, SectionList } from 'react-native';
 import {
   Card,
   Text,
@@ -15,11 +15,11 @@ import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useNavigation } from '@react-navigation/native';
 import { Unit } from '../models/Unit';
 import { Maniple } from '../models/Maniple';
-import { titanTemplates } from '../data/titanTemplates';
 import { bannerTemplates } from '../data/bannerTemplates';
 import { UnitTemplate } from '../models/UnitTemplate';
 import { ManipleTemplate } from '../models/ManipleTemplate';
 import { manipleTemplates } from '../data/manipleTemplates';
+import { useTitanTemplates } from '../hooks/useTitanTemplates';
 
 export default function HomeScreen({
   onOpenUnit,
@@ -27,6 +27,7 @@ export default function HomeScreen({
   onOpenUnit?: (unitId: string) => void;
 }) {
   const { state, addUnitFromTemplate, addTitanFromTemplateToManiple, deleteUnit, addManipleFromTemplate, deleteManiple, addTitanToManiple, removeTitanFromManiple } = useGame();
+  const { titanTemplatesPlayable } = useTitanTemplates();
   // Temporarily disabled navigation to test crash
   // const navigation = useNavigation<any>();
 
@@ -40,10 +41,11 @@ export default function HomeScreen({
 
   const [manageManipleId, setManageManipleId] = useState<string | null>(null);
   const [addUnitTargetManipleId, setAddUnitTargetManipleId] = useState<string | null>(null);
+  const [pendingCreateTitanForManipleId, setPendingCreateTitanForManipleId] = useState<string | null>(null);
 
   const templates: UnitTemplate[] = useMemo(
-    () => (unitType === 'titan' ? titanTemplates : bannerTemplates),
-    [unitType]
+    () => (unitType === 'titan' ? titanTemplatesPlayable : bannerTemplates),
+    [unitType, titanTemplatesPlayable]
   );
 
   const handleUnitPress = (unit: Unit) => {
@@ -103,6 +105,7 @@ export default function HomeScreen({
   const manageManiple = manageManipleId ? state.maniples.find((m) => m.id === manageManipleId) : undefined;
   const manageTemplate = manageManiple ? manipleTemplates.find((t) => t.id === manageManiple.templateId) : undefined;
   const titanUnits = useMemo(() => state.units.filter((u) => u.unitType === 'titan'), [state.units]);
+  const bannerUnits = useMemo(() => state.units.filter((u) => u.unitType === 'banner'), [state.units]);
   const assignedTitanIds = useMemo(() => new Set(state.maniples.flatMap((m) => m.titanUnitIds)), [state.maniples]);
   const canAddToManage =
     !!manageManiple &&
@@ -120,6 +123,50 @@ export default function HomeScreen({
     return map;
   }, [state.maniples]);
 
+  type UnitSection = {
+    key: string;
+    title: string;
+    subtitle?: string;
+    data: Unit[];
+    kind: 'maniple' | 'unassigned' | 'banners';
+  };
+
+  const unitSections: UnitSection[] = useMemo(() => {
+    const manipleSections: UnitSection[] = state.maniples.map((m) => {
+      const tpl = manipleTemplates.find((t) => t.id === m.templateId);
+      const data = m.titanUnitIds
+        .map((id) => titanUnits.find((u) => u.id === id))
+        .filter(Boolean) as Unit[];
+      return {
+        key: `maniple:${m.id}`,
+        title: m.name,
+        subtitle: tpl?.specialRule,
+        data,
+        kind: 'maniple',
+      };
+    });
+
+    const unassignedTitans = titanUnits.filter((u) => !assignedTitanIds.has(u.id));
+    const sections: UnitSection[] = [...manipleSections];
+    if (unassignedTitans.length > 0) {
+      sections.push({
+        key: 'unassigned',
+        title: 'Unassigned Titans',
+        data: unassignedTitans,
+        kind: 'unassigned',
+      });
+    }
+    if (bannerUnits.length > 0) {
+      sections.push({
+        key: 'banners',
+        title: 'Banners',
+        data: bannerUnits,
+        kind: 'banners',
+      });
+    }
+    return sections;
+  }, [assignedTitanIds, bannerUnits, state.maniples, titanUnits]);
+
   if (!!state.isLoading) {
     return (
       <View style={styles.container}>
@@ -132,8 +179,8 @@ export default function HomeScreen({
 
   return (
     <View style={styles.container}>
-      <FlatList<Unit>
-        data={state.units}
+      <SectionList<Unit, UnitSection>
+        sections={unitSections}
         keyExtractor={(u) => u.id}
         contentContainerStyle={styles.scrollContent}
         ListHeaderComponent={
@@ -222,7 +269,24 @@ export default function HomeScreen({
             </Text>
           </View>
         }
-        renderItem={({ item: unit }) => (
+        renderSectionHeader={({ section }) => (
+          <View style={styles.unitGroupHeader}>
+            <View style={styles.sectionHeaderRow}>
+              <Text variant="titleSmall" style={styles.sectionTitle}>
+                {section.title}
+              </Text>
+              <Text variant="bodySmall" style={styles.sectionMeta}>
+                {section.data.length}
+              </Text>
+            </View>
+            {!!section.subtitle ? (
+              <Text variant="bodySmall" style={styles.manipleRule} numberOfLines={2}>
+                {section.subtitle}
+              </Text>
+            ) : null}
+          </View>
+        )}
+        renderItem={({ item: unit, section }) => (
             <Card
               key={unit.id}
               style={styles.unitCard}
@@ -241,7 +305,7 @@ export default function HomeScreen({
                   />
                 </View>
                 <Text variant="bodyMedium">{unit.unitType === 'titan' ? 'Titan' : 'Banner'}</Text>
-                {unit.unitType === 'titan' ? (
+                {unit.unitType === 'titan' && section.kind !== 'maniple' ? (
                   <Text variant="bodySmall" style={styles.unitManiple}>
                     Maniple: {manipleNameByTitanId.get(unit.id) ?? 'Unassigned'}
                   </Text>
@@ -279,7 +343,10 @@ export default function HomeScreen({
       <Portal>
         <Modal
           visible={isAddUnitOpen}
-          onDismiss={() => setIsAddUnitOpen(false)}
+          onDismiss={() => {
+            setIsAddUnitOpen(false);
+            setAddUnitTargetManipleId(null);
+          }}
           contentContainerStyle={styles.addModal}
         >
           <View style={styles.addHeaderRow}>
@@ -321,7 +388,7 @@ export default function HomeScreen({
             <FlatList<UnitTemplate>
               data={
                 addUnitTargetManipleId
-                  ? titanTemplates.filter((t) => {
+                  ? titanTemplatesPlayable.filter((t) => {
                       const m = state.maniples.find((x) => x.id === addUnitTargetManipleId);
                       const mt = m ? manipleTemplates.find((x) => x.id === m.templateId) : undefined;
                       return mt ? mt.allowedTitanTemplateIds.includes(t.id) : true;
@@ -403,7 +470,17 @@ export default function HomeScreen({
 
         <Modal
           visible={!!manageManipleId}
-          onDismiss={() => setManageManipleId(null)}
+          onDismiss={() => {
+            setManageManipleId(null);
+            if (pendingCreateTitanForManipleId) {
+              const manipleId = pendingCreateTitanForManipleId;
+              setPendingCreateTitanForManipleId(null);
+              setUnitType('titan');
+              setCustomName('');
+              setAddUnitTargetManipleId(manipleId);
+              setTimeout(() => setIsAddUnitOpen(true), 50);
+            }
+          }}
           contentContainerStyle={styles.addModal}
         >
           <View style={styles.addHeaderRow}>
@@ -426,12 +503,9 @@ export default function HomeScreen({
               disabled={!manageManiple || !canAddToManage}
               onPress={() => {
                 if (!manageManiple) return;
-                setUnitType('titan');
-                setCustomName('');
-                // Close this modal first; otherwise the "Add Unit" modal opens behind it and looks like nothing happened.
+                // Close this modal first; then open the "Add Unit" modal on dismiss.
+                setPendingCreateTitanForManipleId(manageManiple.id);
                 setManageManipleId(null);
-                setAddUnitTargetManipleId(manageManiple.id);
-                setTimeout(() => setIsAddUnitOpen(true), 0);
               }}
             >
               Create Titan
@@ -519,6 +593,9 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     paddingBottom: 8,
+  },
+  unitGroupHeader: {
+    paddingTop: 8,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
