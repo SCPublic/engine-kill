@@ -11,12 +11,13 @@ import StatsPanel from '../components/StatsPanel';
 import WeaponMount from '../components/WeaponMount';
 import WeaponSelectionModal from '../components/WeaponSelectionModal';
 import SpecialRulesDisplay from '../components/SpecialRulesDisplay';
-import { titanTemplates } from '../data/titanTemplates';
 import { bannerTemplates } from '../data/bannerTemplates';
 import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
+import { useTitanTemplates } from '../hooks/useTitanTemplates';
 
 export default function UnitEditScreen({
   unitId,
@@ -27,10 +28,12 @@ export default function UnitEditScreen({
 }) {
   const { isLg, width } = useBreakpoint();
   const { state, updateUnit, updateVoidShield, updateVoidShieldCount, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updateHeat, updatePlasmaReactor } = useGame();
+  const { titanTemplates } = useTitanTemplates();
   
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [weaponPage, setWeaponPage] = useState(0);
+  const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
 
   const unit = state.units.find((u) => u.id === unitId);
 
@@ -47,13 +50,54 @@ export default function UnitEditScreen({
   const template = templates.find((t) => t.id === unit.templateId);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
 
+  // Small-slice BSData integration: Warhound weapon cards.
+  useEffect(() => {
+    let cancelled = false;
+    // If the template already has a large BSData-derived weapon list, don't double-fetch.
+    if (unit.unitType !== 'titan' || unit.templateId !== 'warhound') return;
+    if ((template?.availableWeapons?.length ?? 0) > 6) return;
+    (async () => {
+      try {
+        const { weapons, warnings } = await loadWarhoundWeaponsFromBattleScribe();
+        warnings.forEach((w) => console.warn(`[BattleScribe] ${w}`));
+        if (!cancelled && weapons.length > 0) setRemoteWeapons(weapons);
+      } catch (e) {
+        console.warn('[BattleScribe] Failed to load Warhound weapons; falling back to local weapons.', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unit.templateId, unit.unitType, template?.availableWeapons?.length]);
+
+  const effectiveWeapons: WeaponTemplate[] = useMemo(() => {
+    if (!template?.availableWeapons) return [];
+    if (unit.unitType === 'titan' && unit.templateId === 'warhound' && remoteWeapons?.length) {
+      // Merge: keep local list stable, overlay any BSData-derived fields by matching weapon id.
+      const base = template.availableWeapons;
+      const remoteById = new Map(remoteWeapons.map((w) => [w.id, w] as const));
+      const merged = base.map((w) => {
+        const r = remoteById.get(w.id);
+        return r ? { ...w, ...r } : w;
+      });
+
+      // Append any remote-only weapons (just in case BSData has extras we don’t).
+      const baseIds = new Set(base.map((w) => w.id));
+      remoteWeapons.forEach((w) => {
+        if (!baseIds.has(w.id)) merged.push(w);
+      });
+      return merged;
+    }
+    return template.availableWeapons;
+  }, [remoteWeapons, template?.availableWeapons, unit.templateId, unit.unitType]);
+
   // Backfill newly-added weapon overlay fields (repairRoll/disabledRollLines) onto already-equipped weapons.
   // This avoids requiring users to re-select weapons after template data changes.
   useEffect(() => {
-    if (!template?.availableWeapons?.length) return;
+    if (!effectiveWeapons.length) return;
 
     const findWeaponTemplate = (weaponId?: string | null) =>
-      weaponId ? template.availableWeapons.find((w) => w.id === weaponId) : undefined;
+      weaponId ? effectiveWeapons.find((w) => w.id === weaponId) : undefined;
 
     const maybeBackfill = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
       const w = unit[mount];
@@ -85,7 +129,7 @@ export default function UnitEditScreen({
   }, [
     unitId,
     template?.id,
-    template?.availableWeapons,
+    effectiveWeapons,
     hasCarapaceWeapon,
     unit.leftWeapon?.id,
     unit.rightWeapon?.id,
@@ -353,7 +397,7 @@ export default function UnitEditScreen({
         {template && selectedMount && (
           <WeaponSelectionModal
             visible={weaponModalVisible}
-            weapons={template.availableWeapons}
+            weapons={effectiveWeapons}
             mountType={selectedMount === 'carapaceWeapon' ? 'carapace' : 'arm'}
             onSelect={(weaponTemplate: WeaponTemplate | null) => {
               if (selectedMount) {
