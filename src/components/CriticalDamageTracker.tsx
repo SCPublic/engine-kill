@@ -81,13 +81,13 @@ const styles = StyleSheet.create({
   },
   pipContainer: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 12,
     alignItems: 'center',
   },
   pip: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     backgroundColor: 'rgba(42, 42, 42, 0.5)',
     justifyContent: 'center',
@@ -103,25 +103,25 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   yellowPip: {
-    borderColor: '#ffeb3b',
+    borderColor: '#fef618',
   },
   yellowPipFilled: {
-    backgroundColor: '#ffeb3b',
-    borderColor: '#ffeb3b',
+    backgroundColor: '#fef618',
+    borderColor: '#fef618',
   },
   orangePip: {
-    borderColor: '#ff9800',
+    borderColor: '#ff8800',
   },
   orangePipFilled: {
-    backgroundColor: '#ff9800',
-    borderColor: '#ff9800',
+    backgroundColor: '#ff8800',
+    borderColor: '#ff8800',
   },
   redPip: {
-    borderColor: '#d32f2f',
+    borderColor: '#ff4400',
   },
   redPipFilled: {
-    backgroundColor: '#d32f2f',
-    borderColor: '#d32f2f',
+    backgroundColor: '#ff4400',
+    borderColor: '#ff4400',
   },
 });
 

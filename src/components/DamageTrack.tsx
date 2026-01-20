@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, Animated } from 'react-native';
 import { DamageLocation } from '../models/Unit';
 import { HitTable, CriticalEffect } from '../models/UnitTemplate';
 import CriticalDamageTracker from './CriticalDamageTracker';
@@ -28,6 +28,7 @@ export default function DamageTrack({
   showCriticalEffects = false,
 }: DamageTrackProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const animatedHeight = React.useRef(new Animated.Value(0)).current;
 
   // Determine which critical level is selected
   const selectedCriticalLevel =
@@ -48,13 +49,23 @@ export default function DamageTrack({
     }
   };
 
+  const toggleExpanded = () => {
+    const toValue = isExpanded ? 0 : 1;
+    Animated.timing(animatedHeight, {
+      toValue,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+    setIsExpanded(!isExpanded);
+  };
+
   return (
     <View style={styles.container}>
       {/* Top Row: Location Label and Critical Indicators */}
       <View style={styles.topRow}>
         <TouchableOpacity
           style={styles.locationButton}
-          onPress={() => setIsExpanded(!isExpanded)}
+          onPress={toggleExpanded}
         >
           <Text style={styles.locationLabel}>{locationName}</Text>
         </TouchableOpacity>
@@ -101,8 +112,25 @@ export default function DamageTrack({
       </View>
 
       {/* Expanded Info Section */}
-      {isExpanded && (showHitTable || showCriticalEffects) && (
-        <View style={styles.expandedSection}>
+      {(showHitTable || showCriticalEffects) && (
+        <Animated.View style={[
+          styles.expandedSection,
+          {
+            maxHeight: animatedHeight.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 500],
+            }),
+            opacity: animatedHeight,
+            paddingTop: animatedHeight.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 8],
+            }),
+            paddingBottom: animatedHeight.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 16],
+            }),
+          }
+        ]}>
           {/* Hit Table */}
           {showHitTable && (
             <View style={styles.damageSection}>
@@ -140,7 +168,7 @@ export default function DamageTrack({
               </View>
             </View>
           )}
-        </View>
+        </Animated.View>
       )}
     </View>
   );
@@ -148,16 +176,18 @@ export default function DamageTrack({
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
     borderWidth: 3,
     borderColor: '#000',
+    borderBottomWidth: 0,
     gap: 16,
   },
   topRow: {
     flexDirection: 'row' as 'row',
     alignItems: 'flex-start' as 'flex-start',
     justifyContent: 'space-between' as 'space-between',
-    height: 45,
   },
   locationButton: {
     backgroundColor: 'rgba(0, 152, 33, 0.25)',
@@ -178,13 +208,12 @@ const styles = StyleSheet.create({
   pipsRow: {
     flexDirection: 'row' as 'row',
     gap: 4,
-    height: 45,
   },
   pipContainer: {
     flex: 1,
     gap: 4,
     alignItems: 'center' as 'center',
-    justifyContent: 'center' as 'center',
+    justifyContent: 'flex-start' as 'flex-start',
   },
   pip: {
     height: 24,
@@ -202,14 +231,29 @@ const styles = StyleSheet.create({
   pipGreenFilled: {
     backgroundColor: 'rgba(89, 255, 0, 0.8)',
     borderColor: '#15ff00',
+    shadowColor: 'rgba(21, 255, 0, 0.8)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
   },
   pipNormalFilled: {
     backgroundColor: 'rgba(211, 255, 207, 0.8)',
     borderColor: '#d3ffcf',
+    shadowColor: 'rgba(211, 255, 207, 0.8)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
   },
   pipRedFilled: {
     backgroundColor: 'rgba(255, 30, 0, 0.8)',
     borderColor: '#ff2600',
+    shadowColor: 'rgba(255, 38, 0, 0.8)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 10,
   },
   pipEmpty: {
     backgroundColor: 'rgba(211, 255, 207, 0.1)',
@@ -224,10 +268,9 @@ const styles = StyleSheet.create({
   expandedSection: {
     backgroundColor: 'rgba(0, 8, 2, 0.75)',
     borderRadius: 8,
-    paddingTop: 8,
-    paddingBottom: 16,
     paddingHorizontal: 16,
     gap: 8,
+    overflow: 'hidden' as 'hidden',
   },
   damageSection: {
     gap: 2,
