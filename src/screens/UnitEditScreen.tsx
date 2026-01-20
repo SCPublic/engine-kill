@@ -261,6 +261,8 @@ export default function UnitEditScreen({
                 modifiers={template.defaultStats.damage.head.modifiers}
                 onDamageChange={(value) => handleDamageChange('head', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'head', level)}
+                showHitTable={true}
+                showCriticalEffects={true}
               />
               <DamageTrack
                 location="body"
@@ -270,6 +272,8 @@ export default function UnitEditScreen({
                 modifiers={template.defaultStats.damage.body.modifiers}
                 onDamageChange={(value) => handleDamageChange('body', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'body', level)}
+                showHitTable={true}
+                showCriticalEffects={true}
               />
               <DamageTrack
                 location="legs"
@@ -279,6 +283,8 @@ export default function UnitEditScreen({
                 modifiers={template.defaultStats.damage.legs.modifiers}
                 onDamageChange={(value) => handleDamageChange('legs', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'legs', level)}
+                showHitTable={true}
+                showCriticalEffects={true}
               />
             </>
           )}

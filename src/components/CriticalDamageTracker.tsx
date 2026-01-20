@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 
 interface CriticalDamageTrackerProps {
   selectedLevel: 'yellow' | 'orange' | 'red' | null;
@@ -10,62 +10,65 @@ export default function CriticalDamageTracker({
   selectedLevel,
   onLevelChange,
 }: CriticalDamageTrackerProps) {
-  const { width } = useWindowDimensions();
-  const marginLeft = width < 380 ? 12 : 40;
-
   const handlePipPress = (level: 'yellow' | 'orange' | 'red') => {
-    // If clicking the already selected pip, deselect it
+    // Toggle: if clicking the already selected pip, deselect it
     if (selectedLevel === level) {
       onLevelChange(null);
       return;
     }
-    
+
     // Select the new level (only one can be selected at a time)
     onLevelChange(level);
   };
 
   return (
-    <View style={[styles.container, { marginLeft }]}>
-      {/* Pyramid layout: yellow (bottom left), orange (top), red (bottom right) */}
-      <View style={styles.pyramid}>
-        {/* Top row - Orange (peak) */}
-        <View style={styles.topRow}>
-          <TouchableOpacity
-            style={[
-              styles.pip,
-              styles.orangePip,
-              selectedLevel === 'orange' && styles.orangePipFilled,
-            ]}
-            onPress={() => handlePipPress('orange')}
-            activeOpacity={0.7}
-          />
-        </View>
-        
-        {/* Bottom row - Yellow (left) and Red (right) */}
-        <View style={styles.bottomRow}>
-          {/* Left (yellow) */}
-          <TouchableOpacity
-            style={[
-              styles.pip,
-              styles.yellowPip,
-              selectedLevel === 'yellow' && styles.yellowPipFilled,
-            ]}
-            onPress={() => handlePipPress('yellow')}
-            activeOpacity={0.7}
-          />
-          {/* Spacer */}
-          <View style={styles.bottomSpacer} />
-          {/* Right (red) */}
-          <TouchableOpacity
-            style={[
-              styles.pip,
-              styles.redPip,
-              selectedLevel === 'red' && styles.redPipFilled,
-            ]}
-            onPress={() => handlePipPress('red')}
-            activeOpacity={0.7}
-          />
-        </View>
+    <View style={styles.container}>
+      {/* Horizontal row layout with I, II, III */}
+      <View style={styles.pipContainer}>
+        <TouchableOpacity
+          style={[
+            styles.pip,
+            styles.yellowPip,
+            selectedLevel === 'yellow' && styles.yellowPipFilled,
+          ]}
+          onPress={() => handlePipPress('yellow')}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.romanNumeral,
+            selectedLevel === 'yellow' && styles.romanNumeralFilled,
+          ]}>I</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.pip,
+            styles.orangePip,
+            selectedLevel === 'orange' && styles.orangePipFilled,
+          ]}
+          onPress={() => handlePipPress('orange')}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.romanNumeral,
+            selectedLevel === 'orange' && styles.romanNumeralFilled,
+          ]}>II</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.pip,
+            styles.redPip,
+            selectedLevel === 'red' && styles.redPipFilled,
+          ]}
+          onPress={() => handlePipPress('red')}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.romanNumeral,
+            selectedLevel === 'red' && styles.romanNumeralFilled,
+          ]}>III</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -75,52 +78,49 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-    width: 64, // Width to contain the pyramid (updated for larger pips)
-    height: 56, // Height to contain the pyramid (updated for larger pips)
   },
-  pyramid: {
-    alignItems: 'center',
-    position: 'relative',
-    zIndex: 1,
-  },
-  topRow: {
-    marginBottom: 8,
-    alignItems: 'center',
-  },
-  bottomRow: {
+  pipContainer: {
     flexDirection: 'row',
+    gap: 4,
     alignItems: 'center',
-  },
-  bottomSpacer: {
-    width: 16,
   },
   pip: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 2,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'rgba(42, 42, 42, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  romanNumeral: {
+    color: '#9dffb2',
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'RobotoMono_700Bold',
+  },
+  romanNumeralFilled: {
+    color: '#000',
   },
   yellowPip: {
-    borderColor: '#ffeb3b', // Yellow
+    borderColor: '#ffeb3b',
   },
   yellowPipFilled: {
-    backgroundColor: '#ffeb3b', // Yellow fill
+    backgroundColor: '#ffeb3b',
     borderColor: '#ffeb3b',
   },
   orangePip: {
-    borderColor: '#ff9800', // Orange
+    borderColor: '#ff9800',
   },
   orangePipFilled: {
-    backgroundColor: '#ff9800', // Orange fill
+    backgroundColor: '#ff9800',
     borderColor: '#ff9800',
   },
   redPip: {
-    borderColor: '#d32f2f', // Red
+    borderColor: '#d32f2f',
   },
   redPipFilled: {
-    backgroundColor: '#d32f2f', // Red fill
+    backgroundColor: '#d32f2f',
     borderColor: '#d32f2f',
   },
 });
