@@ -66,8 +66,8 @@ export default function WeaponSelectionModal({
                 <View style={styles.statsTable}>
                   <View style={styles.statsRow}>
                     <Text style={styles.statLabel}>Range:</Text>
-                    <Text style={styles.statValue}>Short: {weapon.shortRange}"</Text>
-                    <Text style={styles.statValue}>Long: {weapon.longRange}"</Text>
+                    <Text style={styles.statValue}>Short: {String(weapon.shortRange).includes('"') ? weapon.shortRange : `${weapon.shortRange}"`}</Text>
+                    <Text style={styles.statValue}>Long: {String(weapon.longRange).includes('"') ? weapon.longRange : `${weapon.longRange}"`}</Text>
                   </View>
                   <View style={styles.statsRow}>
                     <Text style={styles.statLabel}>ACC:</Text>

@@ -37,7 +37,7 @@ export const titanTemplates: UnitTemplate[] = [
           modifiers: [null, null, null, null, null, null], // Placeholder - will be customized per titan
         },
       },
-      hasCarapaceWeapon: false,
+      hasCarapaceWeapon: true,
       stats: {
         command: 3,
         ballisticSkill: 3,

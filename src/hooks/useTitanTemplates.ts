@@ -1,22 +1,41 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { titanTemplates as localTitanTemplates } from '../data/titanTemplates';
-import {
-  loadAllTitanTemplatesFromBattleScribe,
-  MissingChassisMaxData,
-} from '../adapters/battlescribe/battlescribeAdapter';
+import { MissingChassisMaxData } from '../adapters/battlescribe/battlescribeAdapter';
 import { UnitTemplate } from '../models/UnitTemplate';
+import { battleScribeCache } from '../services/battleScribeCache';
 
 export function useTitanTemplates() {
-  const [remoteTitanTemplates, setRemoteTitanTemplates] = useState<UnitTemplate[] | null>(null);
-  const [missingMaxData, setMissingMaxData] = useState<MissingChassisMaxData[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [legendTitans, setLegendTitans] = useState<Array<{ id: string; name: string }>>([]);
+  const initial = battleScribeCache.getTitanResultSnapshot();
+  const [remoteTitanTemplates, setRemoteTitanTemplates] = useState<UnitTemplate[] | null>(
+    () => initial.result?.templates ?? null
+  );
+  const [missingMaxData, setMissingMaxData] = useState<MissingChassisMaxData[]>(
+    () => initial.result?.missingMaxData ?? []
+  );
+  const [warnings, setWarnings] = useState<string[]>(() => initial.result?.warnings ?? []);
+  const [legendTitans, setLegendTitans] = useState<Array<{ id: string; name: string }>>(
+    () => initial.result?.legendTitans ?? []
+  );
+  const [isLoading, setIsLoading] = useState(() => initial.status === 'loading' || initial.status === 'idle');
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const reload = useCallback(() => {
+    setReloadToken((t) => t + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await loadAllTitanTemplatesFromBattleScribe();
+        // If we already have cached data and this isn't a forced reload, don't refetch on remount.
+        if (reloadToken === 0 && battleScribeCache.getTitanResultSnapshot().status === 'loaded') {
+          if (!cancelled) setIsLoading(false);
+          return;
+        }
+
+        if (!cancelled) setIsLoading(true);
+        const res =
+          reloadToken === 0 ? await battleScribeCache.loadTitansOnce() : await battleScribeCache.reloadTitans();
         if (cancelled) return;
         setRemoteTitanTemplates(res.templates);
         setMissingMaxData(res.missingMaxData);
@@ -24,9 +43,15 @@ export function useTitanTemplates() {
         setLegendTitans(res.legendTitans);
 
         // Helpful log for “what are we missing” without needing UI yet.
-        if (res.missingMaxData.length) {
+        const excludedMissingMaxLogSubstrings = ['warbreaker', 'great crusade', 'crusade'];
+        const loggableMissing = res.missingMaxData.filter((m) => {
+          const n = (m.name || '').toLowerCase();
+          return !excludedMissingMaxLogSubstrings.some((s) => n.includes(s));
+        });
+
+        if (loggableMissing.length) {
           console.warn(
-            `[BattleScribe] Titans missing chassis max data: ${res.missingMaxData
+            `[BattleScribe] Titans missing chassis max data: ${loggableMissing
               .map((m) => `${m.name} (${m.missing.join(', ')})`)
               .join(' | ')}`
           );
@@ -46,12 +71,14 @@ export function useTitanTemplates() {
         setMissingMaxData([]);
         setWarnings(['Failed to load BattleScribe titan templates; using local templates.']);
         setLegendTitans([]);
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   const titanTemplates = useMemo(
     () => remoteTitanTemplates ?? localTitanTemplates,
@@ -68,7 +95,7 @@ export function useTitanTemplates() {
   // Additional “exclude from game for now” filters (still keep in `titanTemplates` so
   // existing saved units can be opened safely).
   const excludedTitanNameSubstrings = useMemo(
-    () => ['warbreaker', 'crusade'],
+    () => ['warbreaker', 'great crusade', 'crusade'],
     []
   );
 
@@ -80,20 +107,6 @@ export function useTitanTemplates() {
     });
   }, [excludedTitanNameSubstrings, titanTemplatesNonLegend]);
 
-  const iconoclastTitans = useMemo(() => {
-    return titanTemplates.filter((t) => (t.name || '').toLowerCase().includes('iconoclast'));
-  }, [titanTemplates]);
-
-  useEffect(() => {
-    if (iconoclastTitans.length) {
-      console.warn(
-        `[BattleScribe] Iconoclast chassis detected: ${iconoclastTitans.map((t) => t.name).join(' | ')}`
-      );
-    } else if (remoteTitanTemplates) {
-      console.warn('[BattleScribe] No Iconoclast chassis detected in loaded titan templates.');
-    }
-  }, [iconoclastTitans, remoteTitanTemplates]);
-
   return {
     titanTemplates,
     titanTemplatesNonLegend,
@@ -101,6 +114,8 @@ export function useTitanTemplates() {
     missingMaxData,
     warnings,
     legendTitans,
+    isLoading,
+    reload,
     source: remoteTitanTemplates ? 'battlescribe' : 'local',
   } as const;
 }

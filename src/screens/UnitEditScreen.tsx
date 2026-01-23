@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
+import { View, StyleSheet, ScrollView, Text, TextInput } from 'react-native';
 import { IconButton } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
@@ -34,6 +34,7 @@ export default function UnitEditScreen({
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [weaponPage, setWeaponPage] = useState(0);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
 
   const unit = state.units.find((u) => u.id === unitId);
 
@@ -45,10 +46,25 @@ export default function UnitEditScreen({
     );
   }
 
+  useEffect(() => {
+    setNameDraft(unit.name ?? '');
+  }, [unit.id, unit.name]);
+
   // Find template for hit tables and critical effects
   const templates = unit.unitType === 'titan' ? titanTemplates : bannerTemplates;
   const template = templates.find((t) => t.id === unit.templateId);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
+
+  const totalPoints = useMemo(() => {
+    if (unit.unitType !== 'titan') return 0;
+    const base = template?.basePoints ?? 0;
+    const weapons =
+      (unit.leftWeapon?.points ?? 0) +
+      (unit.rightWeapon?.points ?? 0) +
+      (unit.carapaceWeapon?.points ?? 0);
+    const upgrades = (unit.upgrades ?? []).reduce((sum, u) => sum + (u.points ?? 0), 0);
+    return base + weapons + upgrades;
+  }, [template?.basePoints, unit.carapaceWeapon?.points, unit.leftWeapon?.points, unit.rightWeapon?.points, unit.unitType]);
 
   // Small-slice BSData integration: Warhound weapon cards.
   useEffect(() => {
@@ -267,14 +283,33 @@ export default function UnitEditScreen({
                 style={styles.backButton}
               />
             )}
-            <Text style={styles.title} numberOfLines={1}>
-              {unit.name.toUpperCase()}
-            </Text>
+            <TextInput
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              onBlur={() => {
+                const trimmed = nameDraft.trim();
+                if (!trimmed || trimmed === unit.name) return;
+                void updateUnit({ ...unit, name: trimmed });
+              }}
+              onSubmitEditing={() => {
+                const trimmed = nameDraft.trim();
+                if (!trimmed || trimmed === unit.name) return;
+                void updateUnit({ ...unit, name: trimmed });
+              }}
+              placeholder="Titan name"
+              placeholderTextColor={colors.textMuted}
+              style={styles.titleInput}
+              autoCorrect={false}
+              autoCapitalize="words"
+              returnKeyType="done"
+              blurOnSubmit
+              numberOfLines={1}
+            />
           </View>
           <Text style={styles.subtitle}>
-            {template?.scale && template?.scaleName && template?.basePoints
-              ? `SCALE: ${template.scale} (${template.scaleName}) • ${template.basePoints} POINTS + WEAPONS`
-              : 'POINTS + WEAPONS'}
+            {template?.scale && template?.scaleName
+              ? `SCALE: ${template.scale} (${template.scaleName}) • ${totalPoints} POINTS`
+              : `${totalPoints} POINTS`}
           </Text>
         </View>
 
@@ -447,6 +482,14 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xxl,
     fontWeight: 'bold',
     flex: 1,
+  },
+  titleInput: {
+    color: colors.text,
+    fontSize: fontSize.xxl,
+    fontWeight: 'bold',
+    flex: 1,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   subtitle: {
     color: colors.textMuted,

@@ -14,12 +14,29 @@ export default function RangeAccTable({
   accuracyShort,
   accuracyLong,
 }: RangeAccTableProps) {
+  const fmtRange = (v: number | string) => {
+    if (v === '-' || v === '' || v === null || v === undefined) return '—';
+    if (typeof v === 'number') return `${v}"`;
+    const t = String(v).trim();
+    if (!t) return '—';
+    if (t === '-') return '—';
+    if (t === 'T' || t.toLowerCase() === 'template') return 'T';
+    // If it already contains a quote, keep it.
+    if (t.includes('"')) return t;
+    // If it's numeric-ish, add inches.
+    if (/^-?\d+(\.\d+)?$/.test(t)) return `${t}"`;
+    return t;
+  };
+
   return (
     <View style={styles.table}>
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.headerCell}>
-          <Text style={styles.headerText}>Range</Text>
+          <Text style={styles.headerText}> </Text>
+        </View>
+        <View style={[styles.headerCell, styles.borderLeft]}>
+          <Text style={styles.headerText}>IN</Text>
         </View>
         <View style={[styles.headerCell, styles.borderLeft]}>
           <Text style={styles.headerText}>ACC</Text>
@@ -35,6 +52,9 @@ export default function RangeAccTable({
           <Text style={styles.dataText}>Short</Text>
         </View>
         <View style={[styles.dataCell, styles.borderLeft]}>
+          <Text style={styles.dataText}>{fmtRange(shortRange)}</Text>
+        </View>
+        <View style={[styles.dataCell, styles.borderLeft]}>
           <Text style={styles.dataText}>{accuracyShort}</Text>
         </View>
       </View>
@@ -43,6 +63,9 @@ export default function RangeAccTable({
       <View style={styles.dataRow}>
         <View style={styles.dataCell}>
           <Text style={styles.dataText}>Long</Text>
+        </View>
+        <View style={[styles.dataCell, styles.borderLeft]}>
+          <Text style={styles.dataText}>{fmtRange(longRange)}</Text>
         </View>
         <View style={[styles.dataCell, styles.borderLeft]}>
           <Text style={styles.dataText}>{accuracyLong}</Text>

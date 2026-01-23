@@ -48,11 +48,25 @@ export interface DamageLocation {
   };
 }
 
+export interface UnitUpgrade {
+  id: string; // BattleScribe selectionEntry id (prefixed for stability)
+  name: string;
+  points: number;
+  rules?: string[];
+}
+
+export interface PrincepsTrait {
+  id: string;
+  name: string;
+  rules: string[];
+}
+
 export interface Unit {
   id: string;
   name: string;
   unitType: 'titan' | 'banner'; // Titan or Banner/Knight
   templateId: string; // Reference to template (e.g., 'reaver', 'warlord', 'questoris')
+  battlegroupId?: string | null; // which battlegroup this unit belongs to
   playerId: string;
   sessionId: string | null; // null if not in a session
   isLocal: boolean; // true if stored locally, false if synced
@@ -90,6 +104,11 @@ export interface Unit {
   leftWeapon: Weapon | null;
   rightWeapon: Weapon | null;
   carapaceWeapon?: Weapon | null; // Optional, not all Titans have this
+
+  // Titan configuration
+  isPrincepsSeniores?: boolean;
+  princepsTrait?: PrincepsTrait | null;
+  upgrades?: UnitUpgrade[];
   
   // Stats
   stats: {
@@ -101,15 +120,6 @@ export interface Unit {
     servitorClades: number; // Servitor Clades (e.g., 2)
     // ... other game stats (extensible)
     [key: string]: any;
-  };
-  
-  // Void Shield save values (e.g., "3+", "4+")
-  voidShieldSaves: string[];
-  
-  // Plasma Reactor heat tracking
-  plasmaReactor: {
-    current: number;
-    max: number;
   };
 }
 

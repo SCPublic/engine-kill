@@ -1,8 +1,12 @@
 import { UnitTemplate, UnitStats } from '../../models/UnitTemplate';
 import { titanTemplates as localTitanTemplates } from '../../data/titanTemplates';
-import { findAll, parseXml, XmlNode } from './xml';
+import { childText, findAll, parseXml, XmlNode } from './xml';
 import type { WeaponTemplate } from '../../models/UnitTemplate';
 import { chassisOverridesByTemplateId } from '../../data/chassisOverrides';
+import type { ManipleTemplate } from '../../models/ManipleTemplate';
+import type { LegionTemplate } from '../../models/LegionTemplate';
+import type { UpgradeTemplate } from '../../models/UpgradeTemplate';
+import type { PrincepsTraitTemplate } from '../../models/PrincepsTraitTemplate';
 
 export interface BattleScribeSourceConfig {
   /**
@@ -34,6 +38,26 @@ export interface BattleScribeAllTitansLoadResult {
 
 export interface BattleScribeWeaponsLoadResult {
   weapons: WeaponTemplate[];
+  warnings: string[];
+}
+
+export interface BattleScribeManiplesLoadResult {
+  maniples: ManipleTemplate[];
+  warnings: string[];
+}
+
+export interface BattleScribeLegionsLoadResult {
+  legions: LegionTemplate[];
+  warnings: string[];
+}
+
+export interface BattleScribeUpgradesLoadResult {
+  upgrades: UpgradeTemplate[];
+  warnings: string[];
+}
+
+export interface BattleScribePrincepsTraitsLoadResult {
+  traits: PrincepsTraitTemplate[];
   warnings: string[];
 }
 
@@ -121,6 +145,8 @@ function sanitizeBattleScribeName(name: string): string {
       .replace(/\s*\+=.*?=\s*/g, ' ')
       // remove standalone "=...=" tags if present
       .replace(/\s*=\s*[^=]+?\s*=\s*/g, ' ')
+      // remove bracketed suffix tags like "[WH]", "[RVR]" etc (often indicates chassis)
+      .replace(/\s*\[[^[\]]+\]\s*/g, ' ')
       // collapse whitespace
       .replace(/\s+/g, ' ')
       .trim()
@@ -293,6 +319,10 @@ function selectionEntryToWeaponTemplate(
   const points = parsePointsFromSelectionEntry(se) ?? 0;
   const chars = getWeaponProfileCharacteristics(se);
 
+  // BSData varies: some weapons provide a combined "Short/Long" range text, others provide
+  // explicit "Short Range" / "Long Range" characteristics.
+  const shortRangeExplicit = chars['Short Range'] ?? chars['Short range'];
+  const longRangeExplicit = chars['Long Range'] ?? chars['Long range'];
   const rangeText =
     chars['Range'] ??
     chars['Rng'] ??
@@ -300,11 +330,18 @@ function selectionEntryToWeaponTemplate(
     chars['Short/Long'] ??
     chars['Short / Long'] ??
     '';
-  const { shortRange, longRange } = parseShortLongFromRangeText(rangeText);
+  const { shortRange, longRange } =
+    shortRangeExplicit || longRangeExplicit
+      ? {
+          shortRange: shortRangeExplicit ? normalizeRangePart(shortRangeExplicit) : '-',
+          longRange: longRangeExplicit ? normalizeRangePart(longRangeExplicit) : '-',
+        }
+      : parseShortLongFromRangeText(rangeText);
 
   const accShort =
     chars['Acc (Short)'] ??
     chars['Accuracy (Short)'] ??
+    chars['Short Accuracy'] ??
     chars['Short Acc'] ??
     chars['Acc Short'] ??
     chars['ACC Short'] ??
@@ -313,6 +350,7 @@ function selectionEntryToWeaponTemplate(
   const accLong =
     chars['Acc (Long)'] ??
     chars['Accuracy (Long)'] ??
+    chars['Long Accuracy'] ??
     chars['Long Acc'] ??
     chars['Acc Long'] ??
     chars['ACC Long'] ??
@@ -356,7 +394,9 @@ function parsePointsFromSelectionEntry(selectionEntry: XmlNode): number | undefi
   for (const costs of costsNodes) {
     for (const cost of costs.children) {
       if (cost.name !== 'cost') continue;
-      const name = (cost.attributes.name || '').toLowerCase();
+      // BSData sometimes has leading spaces: name=" Points" / " Stratagem Points"
+      const name = String(cost.attributes.name ?? '').trim().toLowerCase();
+      // We want normal points only; ignore stratagem points.
       if (name && name !== 'pts' && name !== 'points') continue;
       const raw = cost.attributes.value;
       const num = raw !== undefined ? Number(raw) : NaN;
@@ -383,6 +423,28 @@ function getCharacteristicMap(selectionEntry: XmlNode): Record<string, string> {
     }
   }
 
+  return out;
+}
+
+function parseConstraints(node: XmlNode): { min?: number; max?: number } {
+  // BattleScribe typically represents numeric constraints as:
+  // <constraints>
+  //   <constraint type="min" value="1.0" .../>
+  //   <constraint type="max" value="3.0" .../>
+  // </constraints>
+  const out: { min?: number; max?: number } = {};
+  const constraintsNodes = node.children.filter((c) => c.name === 'constraints');
+  for (const constraints of constraintsNodes) {
+    for (const c of constraints.children) {
+      if (c.name !== 'constraint') continue;
+      const type = (c.attributes.type || '').toLowerCase();
+      const raw = c.attributes.value;
+      const v = raw !== undefined ? Number(raw) : NaN;
+      if (!Number.isFinite(v)) continue;
+      if (type === 'min') out.min = out.min ?? v;
+      if (type === 'max') out.max = out.max ?? v;
+    }
+  }
   return out;
 }
 
@@ -453,7 +515,12 @@ function applyStatsOverlay(base: UnitStats, chars: Record<string, string>): Unit
   const bs = parsePlusNumber(chars['Ballistic Skill'] ?? chars['BS']);
   const ws = parsePlusNumber(chars['Weapon Skill'] ?? chars['WS']);
   const speed = chars['Speed'] ?? chars['Move'] ?? chars['Movement'] ?? chars['M'];
-  const manoeuvre = chars['Manoeuvre'] ?? chars['Manoeuver'] ?? chars['Manoeuvre/Turn'] ?? chars['Man'];
+  const manoeuvre =
+    chars['Manoeuvre'] ??
+    chars['Manoeuver'] ??
+    chars['Manuever'] ?? // BSData AT uses this spelling in some places
+    chars['Manoeuvre/Turn'] ??
+    chars['Man'];
   const servitorClades =
     parsePlusNumber(chars['Servitor Clades'] ?? chars['Servitor Clade'] ?? chars['SC']);
 
@@ -466,6 +533,29 @@ function applyStatsOverlay(base: UnitStats, chars: Record<string, string>): Unit
     ...(manoeuvre !== undefined ? { manoeuvre } : {}),
     ...(servitorClades !== undefined ? { servitorClades } : {}),
   };
+}
+
+function overlayWeaponUiMetadata(
+  remoteWeapons: WeaponTemplate[],
+  localWeapons: WeaponTemplate[] | undefined
+): WeaponTemplate[] {
+  if (!localWeapons || localWeapons.length === 0) return remoteWeapons;
+  const localByKey = new Map<string, WeaponTemplate>();
+  for (const lw of localWeapons) {
+    const key = `${(lw.name || '').trim().toLowerCase()}|${lw.mountType}`;
+    if (!localByKey.has(key)) localByKey.set(key, lw);
+  }
+
+  return remoteWeapons.map((rw) => {
+    const key = `${(rw.name || '').trim().toLowerCase()}|${rw.mountType}`;
+    const lw = localByKey.get(key);
+    if (!lw) return rw;
+    return {
+      ...rw,
+      ...(lw.disabledRollLines ? { disabledRollLines: lw.disabledRollLines } : {}),
+      ...(lw.repairRoll ? { repairRoll: lw.repairRoll } : {}),
+    };
+  });
 }
 
 type TitanOverlay = {
@@ -617,12 +707,19 @@ export async function loadAllTitanTemplatesFromBattleScribe(
       // Resolve weapon links
       const links = collectEntryLinks(se);
       const weapons: WeaponTemplate[] = [];
+      const weaponById = new Map<string, WeaponTemplate>();
+
+      const weaponScore = (w: WeaponTemplate) =>
+        Number(!!w.points) + Number(w.dice !== 0) + Number(w.strength !== 0) + Number(w.traits.length > 0);
       for (const link of links) {
         const target = byId.get(link.targetId);
         if (!target) continue;
         const wt = selectionEntryToWeaponTemplate(target, link.mountType);
-        if (wt) weapons.push(wt);
+        if (!wt) continue;
+        const existing = weaponById.get(wt.id);
+        if (!existing || weaponScore(wt) > weaponScore(existing)) weaponById.set(wt.id, wt);
       }
+      weaponById.forEach((w) => weapons.push(w));
 
       const existing = chassisById.get(id);
       if (!existing) {
@@ -670,19 +767,10 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     if (missing.length) missingMaxData.push({ id: c.id, name: c.name, missing });
 
     if (local) {
-      // Overlay BSData onto local canonical template
-      const overWeapons = c.weapons.length
-        ? (() => {
-            const base = local.availableWeapons || [];
-            const byWeaponId = new Map(c.weapons.map((w) => [w.id, w] as const));
-            const merged = base.map((w) => (byWeaponId.has(w.id) ? { ...w, ...byWeaponId.get(w.id)! } : w));
-            const baseIds = new Set(base.map((w) => w.id));
-            c.weapons.forEach((w) => {
-              if (!baseIds.has(w.id)) merged.push(w);
-            });
-            return merged;
-          })()
-        : local.availableWeapons;
+      // BattleScribe is the source of truth for weapon lists + weapon stats.
+      // We only overlay any local UI-only metadata (disabled roll overlay, repair roll) by name+mount.
+      const overWeapons = c.weapons.length ? overlayWeaponUiMetadata(c.weapons, local.availableWeapons) : local.availableWeapons;
+      const hasCarapaceWeapon = c.weapons.some((w) => w.mountType === 'carapace') || local.defaultStats.hasCarapaceWeapon;
 
       templates.push({
         ...local,
@@ -694,12 +782,25 @@ export async function loadAllTitanTemplatesFromBattleScribe(
           ...(effectivePlasmaReactorMax !== undefined ? { plasmaReactorMax: effectivePlasmaReactorMax } : {}),
           ...(effectiveMaxHeat !== undefined ? { maxHeat: effectiveMaxHeat } : {}),
           ...(effectiveVoidShieldSaves ? { voidShieldSaves: effectiveVoidShieldSaves } : {}),
+          hasCarapaceWeapon,
           stats: applyStatsOverlay(local.defaultStats.stats, c.chars),
         },
         availableWeapons: overWeapons,
       });
     } else {
-      const base = defaultPlaceholderTitanTemplate(c.id, c.name);
+      // Warmaster Iconoclast: use Warmaster core chassis stats/damage tracks, but Iconoclast-specific weapons.
+      const isIconoclast = (c.name || '').toLowerCase().includes('iconoclast');
+      const warmasterLocal = localById.get('warmaster');
+      const base =
+        isIconoclast && warmasterLocal
+          ? ({ ...warmasterLocal, id: c.id, name: c.name || warmasterLocal.name } as UnitTemplate)
+          : defaultPlaceholderTitanTemplate(c.id, c.name);
+
+      const iconoclastOverWeapons =
+        isIconoclast && warmasterLocal && c.weapons.length
+          ? overlayWeaponUiMetadata(c.weapons, warmasterLocal.availableWeapons)
+          : c.weapons;
+
       templates.push({
         ...base,
         ...(c.points !== undefined ? { basePoints: c.points } : {}),
@@ -711,7 +812,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
           ...(effectiveVoidShieldSaves ? { voidShieldSaves: effectiveVoidShieldSaves } : {}),
           stats: applyStatsOverlay(base.defaultStats.stats, c.chars),
         },
-        availableWeapons: c.weapons,
+        availableWeapons: iconoclastOverWeapons,
       });
     }
   }
@@ -925,6 +1026,560 @@ export async function loadWarhoundWeaponsFromBattleScribe(
   }
 
   return { weapons, warnings };
+}
+
+function inferManipleTemplateIdFromName(name: string, bsId?: string): string {
+  const n = name.toLowerCase();
+  if (bsId) return `bsmaniple:${bsId}`;
+  const slug = n.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return slug ? `bsmaniple:${slug}` : 'bsmaniple:unknown';
+}
+
+function isLikelyManipleSelectionEntry(se: XmlNode): boolean {
+  const name = (se.attributes.name || '').toLowerCase();
+  if (!name.includes('maniple')) return false;
+  // Filter out some obvious non-formation noise.
+  if (name.includes('stratagem')) return false;
+  if (name.includes('wargear')) return false;
+  return true;
+}
+
+function extractFirstRuleText(se: XmlNode): string | undefined {
+  // Prefer explicit <rule><description>...</description></rule> text.
+  const ruleNodes = findAll(se, (n) => n.name === 'rule');
+  for (const r of ruleNodes) {
+    const desc = childText(r, 'description') ?? r.text?.trim();
+    if (desc) return desc.trim();
+  }
+  return undefined;
+}
+
+function inferLegionTemplateIdFromSelectionEntry(se: XmlNode): string {
+  const bsId = se.attributes.id;
+  if (bsId) return `bslegio:${bsId}`;
+  const rawName = se.attributes.name?.trim() || '';
+  const slug = rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return slug ? `bslegio:${slug}` : 'bslegio:unknown';
+}
+
+function selectionEntryToLegionTemplate(se: XmlNode): LegionTemplate | null {
+  const rawName = se.attributes.name?.trim();
+  if (!rawName) return null;
+
+  const type = (se.attributes.type || '').toLowerCase();
+  if (type && type !== 'upgrade') return null;
+
+  const name = sanitizeBattleScribeName(rawName);
+  if (!name.toLowerCase().startsWith('legio ')) return null;
+
+  const id = inferLegionTemplateIdFromSelectionEntry(se);
+
+  // Collect ALL rule descriptions, prefixed by rule name when available.
+  const ruleNodes = findAll(se, (n) => n.name === 'rule');
+  const rules: string[] = [];
+  for (const r of ruleNodes) {
+    const desc = (childText(r, 'description') ?? r.text?.trim() ?? '').trim();
+    if (!desc) continue;
+    const rn = (r.attributes.name || '').trim();
+    rules.push(rn ? `${rn}: ${desc}` : desc);
+  }
+
+  // Capture a useful legion category key/id (e.g. LegioMortis) for later filtering.
+  let categoryKey: string | null = null;
+  let categoryId: string | null = null;
+  const categoryLinks = findAll(se, (n) => n.name === 'categoryLink');
+  for (const c of categoryLinks) {
+    const nm = (c.attributes.name || '').trim();
+    const tid = (c.attributes.targetId || '').trim();
+    if (!nm || !tid) continue;
+    if (!nm.toLowerCase().startsWith('legio')) continue;
+    if (nm === 'LegioSpecificWargear') continue;
+    categoryKey = nm;
+    categoryId = tid;
+    break;
+  }
+
+  return { id, name, rules, categoryKey, categoryId };
+}
+
+function selectionEntryToUpgradeTemplate(
+  se: XmlNode,
+  sourceGroup: UpgradeTemplate['sourceGroup'],
+  byId?: Map<string, XmlNode>
+): UpgradeTemplate | null {
+  const rawName = se.attributes.name?.trim();
+  if (!rawName) return null;
+  const name = sanitizeBattleScribeName(rawName);
+  // Exclude legions/houses/etc from the general titan-upgrade list.
+  const lname = name.toLowerCase();
+  if (lname.startsWith('legio ')) return null;
+  if (lname.startsWith('house ')) return null;
+  if (lname.includes('maniple')) return null;
+  if (lname.includes('titan')) {
+    // allow "Princeps Seniores" later, but generally avoid chassis entries
+    if (lname.includes('warlord') || lname.includes('warhound') || lname.includes('reaver') || lname.includes('warmaster')) {
+      return null;
+    }
+  }
+
+  const bsId = se.attributes.id;
+  const id = bsId ? `bsupg:${bsId}` : `bsupg:${lname.replace(/[^a-z0-9]+/g, '-')}`;
+  const points = parsePointsFromSelectionEntry(se) ?? 0;
+
+  const ruleNodes = findAll(se, (n) => n.name === 'rule');
+  const rules: string[] = [];
+  for (const r of ruleNodes) {
+    const desc = (childText(r, 'description') ?? r.text?.trim() ?? '').trim();
+    if (!desc) continue;
+    const rn = (r.attributes.name || '').trim();
+    rules.push(rn ? `${rn}: ${desc}` : desc);
+  }
+  if (rules.length === 0) {
+    // Some entries store text under <rules><rule><description>, but if not, keep name only.
+    rules.push(name);
+  }
+
+  // Legion-specific tagging (category links like LegioMortis, LegioTempestus, etc.)
+  const legioKeys = Array.from(
+    new Set(
+      findAll(se, (n) => n.name === 'categoryLink')
+        .map((c) => String(c.attributes.name ?? '').trim())
+        .filter((n) => n.toLowerCase().startsWith('legio') && n !== 'LegioSpecificWargear')
+    )
+  );
+
+  // Titan filtering: detect "hidden=true when ancestor is instanceOf <chassis>" patterns.
+  // We interpret these as "excluded chassis".
+  const excludedTitanTemplateIds: string[] = [];
+  if (byId) {
+    const conditions = findAll(se, (n) => n.name === 'condition');
+    for (const cond of conditions) {
+      const type = String(cond.attributes.type ?? '').toLowerCase();
+      const scope = String(cond.attributes.scope ?? '').toLowerCase();
+      const field = String(cond.attributes.field ?? '').toLowerCase();
+      const childId = String(cond.attributes.childId ?? '');
+      if (!childId) continue;
+      if (type !== 'instanceof') continue;
+      if (scope !== 'ancestor') continue;
+      if (field !== 'selections') continue;
+      const target = byId.get(childId);
+      if (!target || target.name !== 'selectionEntry') continue;
+      const chars = getCharacteristicMap(target);
+      if (!isLikelyTitanChassis(target, chars)) continue;
+      excludedTitanTemplateIds.push(makeStableTitanTemplateId(target));
+    }
+  }
+
+  return {
+    id,
+    name,
+    points,
+    rules,
+    sourceGroup,
+    ...(legioKeys.length ? { legioKeys } : {}),
+    ...(excludedTitanTemplateIds.length ? { excludedTitanTemplateIds: Array.from(new Set(excludedTitanTemplateIds)) } : {}),
+  };
+}
+
+function selectionEntryToManipleTemplate(se: XmlNode, byId: Map<string, XmlNode>): ManipleTemplate | null {
+  const rawName = se.attributes.name?.trim();
+  if (!rawName) return null;
+  const name = sanitizeBattleScribeName(rawName);
+  if (!name.toLowerCase().includes('maniple')) return null;
+  if (!isLikelyManipleSelectionEntry({ ...se, attributes: { ...se.attributes, name } })) return null;
+
+  const id = inferManipleTemplateIdFromName(name, se.attributes.id);
+
+  const allowedTitanIds = new Set<string>();
+  let minTitans = 0;
+  let maxTitans = 0;
+
+  // Primary path (matches BSData AT .gst):
+  // Maniple composition is often expressed as direct <entryLinks><entryLink .../></entryLinks> on the maniple
+  // selectionEntry, where each entryLink:
+  // - targets a titan chassis selectionEntry (Warhound/Reaver/Warlord/etc)
+  // - carries min/max constraints for that chassis inside the maniple.
+  const directEntryLinksContainer = se.children.find((c) => c.name === 'entryLinks');
+  const directEntryLinks = directEntryLinksContainer?.children.filter((c) => c.name === 'entryLink') ?? [];
+
+  let foundDirectTitanSlots = 0;
+  for (const link of directEntryLinks) {
+    const targetId = link.attributes.targetId;
+    if (!targetId) continue;
+    const target = byId.get(targetId);
+    if (!target || target.name !== 'selectionEntry') continue;
+
+    const chars = getCharacteristicMap(target);
+    if (!isLikelyTitanChassis(target, chars)) continue;
+
+    foundDirectTitanSlots += 1;
+    allowedTitanIds.add(makeStableTitanTemplateId(target));
+
+    const { min, max } = parseConstraints(link);
+    if (min !== undefined) minTitans += Math.max(0, Math.floor(min));
+    if (max !== undefined) maxTitans += Math.max(0, Math.floor(max));
+  }
+
+  // Fallback heuristic: sum constraints from selectionEntryGroups that contain (directly or indirectly) titan chassis.
+  // Note: some repos/versions may nest formation “slots” behind intermediate groups/links.
+
+  const collectTitanChassisIdsFromNode = (node: XmlNode, visitedIds: Set<string>): string[] => {
+    const out: string[] = [];
+    const nodeId = node.attributes.id;
+    if (nodeId) {
+      if (visitedIds.has(nodeId)) return out;
+      visitedIds.add(nodeId);
+    }
+
+    const chars = getCharacteristicMap(node);
+    if (node.name === 'selectionEntry' && isLikelyTitanChassis(node, chars)) {
+      out.push(makeStableTitanTemplateId(node));
+      return out;
+    }
+
+    // Some structures embed selectionEntries directly (not via entryLink). Scan them too.
+    const embeddedSelectionEntries = findAll(node, (n) => n.name === 'selectionEntry');
+    for (const embedded of embeddedSelectionEntries) {
+      const embeddedChars = getCharacteristicMap(embedded);
+      if (isLikelyTitanChassis(embedded, embeddedChars)) out.push(makeStableTitanTemplateId(embedded));
+    }
+
+    const links = findAll(node, (n) => n.name === 'entryLink');
+    for (const link of links) {
+      const tid = link.attributes.targetId;
+      if (!tid) continue;
+      const target = byId.get(tid);
+      if (!target) continue;
+      collectTitanChassisIdsFromNode(target, visitedIds).forEach((x) => out.push(x));
+    }
+
+    return out;
+  };
+
+  const inferGroupMinMax = (group: XmlNode): { min: number; max: number } => {
+    // Prefer constraints on the group itself; otherwise consider constraints on direct entryLinks.
+    const fromGroup = parseConstraints(group);
+    let min = fromGroup.min;
+    let max = fromGroup.max;
+
+    if (min === undefined && max === undefined) {
+      const directLinks = group.children.filter((c) => c.name === 'entryLinks' || c.name === 'entryLink');
+      // Some BSData puts constraints on entryLinks under <entryLinks>
+      const linkNodes = findAll({ ...group, children: directLinks.flatMap((x) => (x.name === 'entryLink' ? [x] : x.children)) }, (n) => n.name === 'entryLink');
+      for (const l of linkNodes) {
+        const c = parseConstraints(l);
+        if (min === undefined && c.min !== undefined) min = c.min;
+        if (max === undefined && c.max !== undefined) max = c.max;
+        if (min !== undefined && max !== undefined) break;
+      }
+    }
+
+    const minI = min !== undefined ? Math.max(0, Math.floor(min)) : 0;
+    // If max missing but min present, treat it as fixed-slot count.
+    let maxI = max !== undefined ? Math.max(0, Math.floor(max)) : minI;
+    // If we still have 0/0, but this is a titan slot group, assume at least one titan can be chosen.
+    if (maxI === 0) maxI = 1;
+    return { min: minI, max: maxI };
+  };
+
+  if (foundDirectTitanSlots === 0) {
+    const groups = findAll(se, (n) => n.name === 'selectionEntryGroup');
+    for (const g of groups) {
+      const titanIds = collectTitanChassisIdsFromNode(g, new Set<string>());
+      if (titanIds.length === 0) continue;
+
+      titanIds.forEach((t) => allowedTitanIds.add(t));
+
+      const mm = inferGroupMinMax(g);
+      minTitans += mm.min;
+      maxTitans += mm.max;
+    }
+  }
+
+  // Reasonable fallback for known starter templates if constraints weren't discovered.
+  const specialRule = extractFirstRuleText(se) ?? `${name}: (BattleScribe)`;
+
+  return {
+    id,
+    name,
+    allowedTitanTemplateIds: Array.from(allowedTitanIds),
+    minTitans,
+    maxTitans,
+    specialRule,
+  };
+}
+
+/**
+ * Loads formation/maniple templates from BSData.
+ *
+ * This is best-effort: BattleScribe encodes full formation structure/rules in a way that’s
+ * more complex than our current `ManipleTemplate` model, so we extract:
+ * - name + stable id
+ * - allowed titan chassis (best-effort via entryLinks)
+ * - min/max titans (best-effort via selectionEntryGroup constraints)
+ * - first rule description (if present)
+ */
+export async function loadManipleTemplatesFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribeManiplesLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  const found: ManipleTemplate[] = [];
+
+  for (const xml of xmlStrings) {
+    const doc = parseXml(xml);
+    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
+    const byId = new Map<string, XmlNode>();
+    // Build an ID map that includes both selectionEntry and selectionEntryGroup nodes so entryLinks can be resolved.
+    const idNodes = findAll(doc, (n) => typeof n.attributes.id === 'string' && n.attributes.id.length > 0);
+    idNodes.forEach((n) => {
+      const id = n.attributes.id;
+      if (id) byId.set(id, n);
+    });
+
+    for (const se of selectionEntries) {
+      const tpl = selectionEntryToManipleTemplate(se, byId);
+      if (tpl) found.push(tpl);
+    }
+  }
+
+  // Deduplicate by id and sort for stable UI.
+  const byId = new Map<string, ManipleTemplate>();
+  for (const m of found) {
+    if (!byId.has(m.id)) byId.set(m.id, m);
+    else {
+      // Merge: keep richer allowed list and non-zero min/max if discovered.
+      const existing = byId.get(m.id)!;
+      const allowed = new Set([...(existing.allowedTitanTemplateIds || []), ...(m.allowedTitanTemplateIds || [])]);
+      byId.set(m.id, {
+        ...existing,
+        name: existing.name || m.name,
+        allowedTitanTemplateIds: Array.from(allowed),
+        minTitans: existing.minTitans || m.minTitans,
+        maxTitans: existing.maxTitans || m.maxTitans,
+        specialRule: existing.specialRule || m.specialRule,
+      });
+    }
+  }
+
+  const maniples = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  if (maniples.length === 0) {
+    warnings.push('No maniple/formation entries were recognized in fetched BattleScribe files. Falling back to local maniple templates only.');
+  }
+
+  return { maniples, warnings };
+}
+
+/**
+ * Loads Legion templates (name + special rules) from BSData.
+ * These show up as selectionEntry upgrades like "Legio Astorum (Warp Runners)".
+ */
+export async function loadLegionTemplatesFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribeLegionsLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  const found: LegionTemplate[] = [];
+  const seen = new Set<string>();
+
+  for (const xml of xmlStrings) {
+    const doc = parseXml(xml);
+    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
+    for (const se of selectionEntries) {
+      const legio = selectionEntryToLegionTemplate(se);
+      if (!legio) continue;
+      if (seen.has(legio.id)) continue;
+      seen.add(legio.id);
+      found.push(legio);
+    }
+  }
+
+  found.sort((a, b) => a.name.localeCompare(b.name));
+  if (found.length === 0) warnings.push('No legions were recognized in fetched BattleScribe files.');
+
+  return { legions: found, warnings };
+}
+
+/**
+ * Loads Titan wargear/upgrade templates from the curated BSData "Wargear" groups.
+ * We currently expose:
+ * - Universal Wargear
+ * - Loyalist Wargear
+ * - Traitor Wargear
+ */
+export async function loadUpgradeTemplatesFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribeUpgradesLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  // Known group IDs in Adeptus Titanicus 2018.gst
+  const groupIds: Array<{ id: string; sourceGroup: UpgradeTemplate['sourceGroup'] }> = [
+    { id: 'f360-b4bd-e6cd-d077', sourceGroup: 'universal' },
+    { id: 'c354-c2bb-8d84-0770', sourceGroup: 'loyalist' },
+    { id: '3bce-46aa-99ca-8f60', sourceGroup: 'traitor' },
+  ];
+
+  const upgrades: UpgradeTemplate[] = [];
+  const seen = new Set<string>();
+
+  for (const xml of xmlStrings) {
+    const doc = parseXml(xml);
+    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
+    const byId = new Map<string, XmlNode>();
+    selectionEntries.forEach((se) => {
+      const id = se.attributes.id;
+      if (id) byId.set(id, se);
+    });
+
+    // Always include Princeps Seniores rules if present (used by titan config).
+    // selectionEntry id: 2dc5-e9bf-6f6e-39a5 in Adeptus Titanicus 2018.gst
+    const princeps = byId.get('2dc5-e9bf-6f6e-39a5');
+    if (princeps) {
+      const tpl = selectionEntryToUpgradeTemplate(princeps, 'universal', byId);
+      if (tpl && !seen.has(tpl.id)) {
+        seen.add(tpl.id);
+        upgrades.push(tpl);
+      }
+    }
+
+    for (const g of groupIds) {
+      const groupNode = findAll(doc, (n) => n.name === 'selectionEntryGroup' && n.attributes.id === g.id)[0];
+      if (!groupNode) continue;
+      const entryLinks = findAll(groupNode, (n) => n.name === 'entryLink');
+      for (const link of entryLinks) {
+        const tid = link.attributes.targetId;
+        if (!tid) continue;
+        const target = byId.get(tid);
+        if (!target) continue;
+        const tpl = selectionEntryToUpgradeTemplate(target, g.sourceGroup, byId);
+        if (!tpl) continue;
+        if (seen.has(tpl.id)) continue;
+        seen.add(tpl.id);
+        upgrades.push(tpl);
+      }
+    }
+  }
+
+  upgrades.sort((a, b) => a.name.localeCompare(b.name));
+  if (upgrades.length === 0) warnings.push('No wargear upgrades were resolved from BattleScribe data.');
+  return { upgrades, warnings };
+}
+
+export async function loadPrincepsTraitTemplatesFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribePrincepsTraitsLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  const traits: PrincepsTraitTemplate[] = [];
+  const seen = new Set<string>();
+
+  for (const xml of xmlStrings) {
+    const doc = parseXml(xml);
+    const groups = findAll(doc, (n) => n.name === 'selectionEntryGroup' && n.attributes.id === 'aa6b-a665-b907-234e');
+    if (!groups.length) continue;
+    const root = groups[0]!;
+
+    // Each child selectionEntryGroup is a Legio group containing selectionEntries (the trait list).
+    const legioGroups = root.children.filter((c) => c.name === 'selectionEntryGroups').flatMap((c) => c.children);
+    for (const lg of legioGroups) {
+      if (lg.name !== 'selectionEntryGroup') continue;
+
+      // Attempt to extract the legion category id from the group's modifier conditions:
+      // <condition scope="primary-category" ... childId="...LegioMortis categoryEntry id..." />
+      let legioCategoryId: string | null = null;
+      const conds = findAll(lg, (n) => n.name === 'condition');
+      for (const cond of conds) {
+        const scope = String(cond.attributes.scope ?? '').toLowerCase();
+        const type = String(cond.attributes.type ?? '').toLowerCase();
+        const childId = String(cond.attributes.childId ?? '');
+        if (!childId) continue;
+        if (scope === 'primary-category' && (type === 'atleast' || type === 'equalto')) {
+          legioCategoryId = childId;
+          break;
+        }
+      }
+
+      const entriesContainers = lg.children.filter((c) => c.name === 'selectionEntries');
+      for (const container of entriesContainers) {
+        for (const se of container.children) {
+          if (se.name !== 'selectionEntry') continue;
+          const rawName = se.attributes.name?.trim();
+          const bsId = se.attributes.id;
+          if (!rawName || !bsId) continue;
+
+          const name = sanitizeBattleScribeName(rawName).replace(/^\d+\s+/, '').trim();
+          const id = `bstrait:${bsId}`;
+
+          const ruleNodes = findAll(se, (n) => n.name === 'rule');
+          const rules: string[] = [];
+          for (const r of ruleNodes) {
+            const desc = (childText(r, 'description') ?? r.text?.trim() ?? '').trim();
+            if (!desc) continue;
+            const rn = (r.attributes.name || '').trim();
+            rules.push(rn ? `${rn}: ${desc}` : desc);
+          }
+          if (!rules.length) rules.push(name);
+
+          if (seen.has(id)) continue;
+          seen.add(id);
+          traits.push({ id, name, rules, legioCategoryId });
+        }
+      }
+    }
+  }
+
+  traits.sort((a, b) => a.name.localeCompare(b.name));
+  if (!traits.length) warnings.push('No Princeps trait templates were resolved from BattleScribe data.');
+
+  return { traits, warnings };
 }
 
 

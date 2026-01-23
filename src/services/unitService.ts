@@ -149,9 +149,20 @@ export const unitService = {
   },
 
   createWeaponFromTemplate(template: WeaponTemplate): Weapon {
+    const cleanName = (name: string) =>
+      name
+        // remove "+=...=" tags
+        .replace(/\s*\+=.*?=\s*/g, ' ')
+        // remove standalone "=...=" tags
+        .replace(/\s*=\s*[^=]+?\s*=\s*/g, ' ')
+        // remove bracket tags like "[WH]", "[RVR]" etc
+        .replace(/\s*\[[^[\]]+\]\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
     return {
       id: template.id,
-      name: template.name,
+      name: cleanName(template.name),
       points: template.points,
       shortRange: template.shortRange,
       longRange: template.longRange,

@@ -4,10 +4,11 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { useFonts, RobotoMono_400Regular, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 
-import { GameProvider } from './src/context/GameContext';
+import { GameProvider, useGame } from './src/context/GameContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import HomeScreen from './src/screens/HomeScreen';
 import UnitEditScreen from './src/screens/UnitEditScreen';
+import BattlegroupListScreen from './src/screens/BattlegroupListScreen';
 
 const theme = {
   ...MD3LightTheme,
@@ -17,8 +18,30 @@ const theme = {
   },
 };
 
-export default function App() {
+function AppNavigator() {
+  const { state, setActiveBattlegroupId } = useGame();
   const [activeUnitId, setActiveUnitId] = React.useState<string | null>(null);
+
+  // Unit edit always takes precedence
+  if (activeUnitId) {
+    return <UnitEditScreen unitId={activeUnitId} onBack={() => setActiveUnitId(null)} />;
+  }
+
+  // New main page: battlegroup list
+  if (!state.activeBattlegroupId) {
+    return <BattlegroupListScreen />;
+  }
+
+  // Battlegroup page (previous HomeScreen)
+  return (
+    <HomeScreen
+      onOpenUnit={(unitId) => setActiveUnitId(unitId)}
+      onBack={() => setActiveBattlegroupId(null)}
+    />
+  );
+}
+
+export default function App() {
   const [fontsLoaded] = useFonts({
     RobotoMono_400Regular,
     RobotoMono_700Bold,
@@ -37,11 +60,7 @@ export default function App() {
       <PaperProvider theme={theme}>
         <GameProvider>
           <StatusBar style="dark" />
-          {activeUnitId ? (
-            <UnitEditScreen unitId={activeUnitId} onBack={() => setActiveUnitId(null)} />
-          ) : (
-            <HomeScreen onOpenUnit={(unitId) => setActiveUnitId(unitId)} />
-          )}
+          <AppNavigator />
         </GameProvider>
       </PaperProvider>
     </ErrorBoundary>

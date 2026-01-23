@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Unit, Weapon } from '../models/Unit';
 import { Maniple } from '../models/Maniple';
+import { Battlegroup } from '../models/Battlegroup';
 import { storageService } from '../services/storageService';
 import { unitService } from '../services/unitService';
-import { UnitTemplate, WeaponTemplate } from '../models/UnitTemplate';
+import { UnitTemplate } from '../models/UnitTemplate';
 import { ManipleTemplate } from '../models/ManipleTemplate';
-import { manipleTemplates } from '../data/manipleTemplates';
+import { useManipleTemplates } from '../hooks/useManipleTemplates';
 
 interface GameState {
+  battlegroups: Battlegroup[];
+  activeBattlegroupId: string | null;
   units: Unit[];
   maniples: Maniple[];
   playerId: string | null;
@@ -19,6 +22,11 @@ type GameAction =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_PLAYER_ID'; payload: string }
   | { type: 'SET_PLAYER_NAME'; payload: string }
+  | { type: 'LOAD_BATTLEGROUPS'; payload: Battlegroup[] }
+  | { type: 'SET_ACTIVE_BATTLEGROUP_ID'; payload: string | null }
+  | { type: 'ADD_BATTLEGROUP'; payload: Battlegroup }
+  | { type: 'RENAME_BATTLEGROUP'; payload: { id: string; name: string } }
+  | { type: 'DELETE_BATTLEGROUP'; payload: string }
   | { type: 'LOAD_UNITS'; payload: Unit[] }
   | { type: 'ADD_UNIT'; payload: Unit }
   | { type: 'UPDATE_UNIT'; payload: Unit }
@@ -30,6 +38,8 @@ type GameAction =
   | { type: 'INITIALIZE_PLAYER' };
 
 const initialState: GameState = {
+  battlegroups: [],
+  activeBattlegroupId: null,
   units: [],
   maniples: [],
   playerId: null,
@@ -41,6 +51,25 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
         case 'SET_LOADING':
           return { ...state, isLoading: !!action.payload }; // Convert to boolean using !!
+    case 'LOAD_BATTLEGROUPS':
+      return { ...state, battlegroups: action.payload };
+    case 'SET_ACTIVE_BATTLEGROUP_ID':
+      return { ...state, activeBattlegroupId: action.payload };
+    case 'ADD_BATTLEGROUP':
+      return { ...state, battlegroups: [...state.battlegroups, action.payload] };
+    case 'RENAME_BATTLEGROUP':
+      return {
+        ...state,
+        battlegroups: state.battlegroups.map((bg) =>
+          bg.id === action.payload.id ? { ...bg, name: action.payload.name } : bg
+        ),
+      };
+    case 'DELETE_BATTLEGROUP':
+      return {
+        ...state,
+        battlegroups: state.battlegroups.filter((bg) => bg.id !== action.payload),
+        activeBattlegroupId: state.activeBattlegroupId === action.payload ? null : state.activeBattlegroupId,
+      };
     case 'SET_PLAYER_ID':
       return { ...state, playerId: action.payload };
     case 'SET_PLAYER_NAME':
@@ -84,8 +113,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
 interface GameContextType {
   state: GameState;
+  createBattlegroup: (name: string) => Promise<Battlegroup>;
+  renameBattlegroup: (battlegroupId: string, name: string) => Promise<void>;
+  deleteBattlegroupById: (battlegroupId: string) => Promise<void>;
+  setActiveBattlegroupId: (battlegroupId: string | null) => Promise<void>;
   addUnitFromTemplate: (template: UnitTemplate, name?: string) => Promise<void>;
   addTitanFromTemplateToManiple: (manipleId: string, template: UnitTemplate, name?: string) => Promise<void>;
+  duplicateTitan: (unitId: string, nameOverride?: string) => Promise<{ unitId: string; attachedManipleId: string | null }>;
   updateUnit: (unit: Unit) => Promise<void>;
   deleteUnit: (unitId: string) => Promise<void>;
   updateVoidShield: (unitId: string, facing: 'front' | 'left' | 'right' | 'rear', value: number) => Promise<void>;
@@ -112,9 +146,9 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   console.log('GameProvider: Component function called');
-  try {
-    const [state, dispatch] = useReducer(gameReducer, initialState);
-    console.log('GameProvider: useReducer initialized, state.isLoading:', typeof state.isLoading, state.isLoading);
+  const [state, dispatch] = useReducer(gameReducer, initialState);
+  console.log('GameProvider: useReducer initialized, state.isLoading:', typeof state.isLoading, state.isLoading);
+  const { manipleTemplates } = useManipleTemplates();
 
   // Initialize: Load player ID and units
   useEffect(() => {
@@ -244,17 +278,60 @@ export function GameProvider({ children }: { children: ReactNode }) {
           return unit;
         });
         
-        // Save migrated units back
-        if (migratedUnits.length > 0 && migratedUnits.some((u, i) => u !== units[i])) {
-          await storageService.saveUnits(migratedUnits);
+        // Load battlegroups + active battlegroup (minimal “name only” battlegroups for now).
+        let battlegroups = await storageService.loadBattlegroups();
+        let activeBattlegroupId = await storageService.loadActiveBattlegroupId();
+
+        // Migration: if no battlegroups exist, create a default one so existing installs can proceed.
+        if (battlegroups.length === 0) {
+          const defaultBattlegroup: Battlegroup = {
+            id: `battlegroup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+            name: 'Battlegroup 1',
+            createdAt: Date.now(),
+          };
+          battlegroups = [defaultBattlegroup];
+          activeBattlegroupId = defaultBattlegroup.id;
+          await storageService.saveBattlegroups(battlegroups);
+          await storageService.saveActiveBattlegroupId(activeBattlegroupId);
         }
-        
-        console.log('GameProvider: About to dispatch LOAD_UNITS with', migratedUnits.length, 'units');
-        dispatch({ type: 'LOAD_UNITS', payload: migratedUnits });
+
+        // If the stored active battlegroup is missing, fall back to first battlegroup.
+        if (activeBattlegroupId && !battlegroups.some((bg) => bg.id === activeBattlegroupId)) {
+          activeBattlegroupId = battlegroups[0]?.id ?? null;
+          await storageService.saveActiveBattlegroupId(activeBattlegroupId);
+        }
+
+        dispatch({ type: 'LOAD_BATTLEGROUPS', payload: battlegroups });
+        dispatch({ type: 'SET_ACTIVE_BATTLEGROUP_ID', payload: activeBattlegroupId });
 
         // Load maniples
         const maniples = await storageService.loadManiples();
-        dispatch({ type: 'LOAD_MANIPLES', payload: maniples });
+
+        // Migration: scope existing data to a battlegroup.
+        // If units/maniples predate battlegroups, attach them to the active battlegroup.
+        const targetBattlegroupId = activeBattlegroupId ?? battlegroups[0]?.id ?? null;
+        const migratedUnitsWithBattlegroup = migratedUnits.map((u) =>
+          u.battlegroupId === undefined || u.battlegroupId === null
+            ? { ...u, battlegroupId: targetBattlegroupId }
+            : u
+        );
+        const migratedManiplesWithBattlegroup = maniples.map((m) =>
+          m.battlegroupId === undefined || m.battlegroupId === null
+            ? { ...m, battlegroupId: targetBattlegroupId }
+            : m
+        );
+
+        // Persist migrations if needed.
+        if (migratedUnitsWithBattlegroup.some((u, i) => u !== migratedUnits[i])) {
+          await storageService.saveUnits(migratedUnitsWithBattlegroup);
+        }
+        if (migratedManiplesWithBattlegroup.some((m, i) => m !== maniples[i])) {
+          await storageService.saveManiples(migratedManiplesWithBattlegroup);
+        }
+
+        console.log('GameProvider: About to dispatch LOAD_UNITS with', migratedUnitsWithBattlegroup.length, 'units');
+        dispatch({ type: 'LOAD_UNITS', payload: migratedUnitsWithBattlegroup });
+        dispatch({ type: 'LOAD_MANIPLES', payload: migratedManiplesWithBattlegroup });
 
         console.log('GameProvider: Initialization complete');
       } catch (error) {
@@ -273,12 +350,106 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setActiveBattlegroupId = async (battlegroupId: string | null) => {
+    dispatch({ type: 'SET_ACTIVE_BATTLEGROUP_ID', payload: battlegroupId });
+    await storageService.saveActiveBattlegroupId(battlegroupId);
+  };
+
+  const createBattlegroup = async (name: string): Promise<Battlegroup> => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Battlegroup name is required');
+    const battlegroup: Battlegroup = {
+      id: `battlegroup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      name: trimmed,
+      createdAt: Date.now(),
+    };
+    const next = [...state.battlegroups, battlegroup];
+    dispatch({ type: 'ADD_BATTLEGROUP', payload: battlegroup });
+    await storageService.saveBattlegroups(next);
+    // Auto-select newly created battlegroup.
+    await setActiveBattlegroupId(battlegroup.id);
+    return battlegroup;
+  };
+
+  const renameBattlegroup = async (battlegroupId: string, name: string): Promise<void> => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    dispatch({ type: 'RENAME_BATTLEGROUP', payload: { id: battlegroupId, name: trimmed } });
+    const next = state.battlegroups.map((bg) => (bg.id === battlegroupId ? { ...bg, name: trimmed } : bg));
+    await storageService.saveBattlegroups(next);
+  };
+
+  const deleteBattlegroupById = async (battlegroupId: string): Promise<void> => {
+    dispatch({ type: 'DELETE_BATTLEGROUP', payload: battlegroupId });
+    const next = state.battlegroups.filter((bg) => bg.id !== battlegroupId);
+    await storageService.saveBattlegroups(next);
+    // If we deleted the active battlegroup, clear selection (user returns to battlegroup list).
+    if (state.activeBattlegroupId === battlegroupId) {
+      await setActiveBattlegroupId(null);
+    }
+  };
+
   const addUnitFromTemplate = async (template: UnitTemplate, name?: string) => {
     if (!state.playerId) return;
     
-    const unit = unitService.createUnitFromTemplate(template, state.playerId, name);
+    const unit = {
+      ...unitService.createUnitFromTemplate(template, state.playerId, name),
+      battlegroupId: state.activeBattlegroupId ?? null,
+    };
     dispatch({ type: 'ADD_UNIT', payload: unit });
     await storageService.saveUnits([...state.units, unit]);
+  };
+
+  const duplicateTitan = async (
+    unitId: string,
+    nameOverride?: string
+  ): Promise<{ unitId: string; attachedManipleId: string | null }> => {
+    if (!state.playerId) return { unitId: '', attachedManipleId: null };
+
+    const original = state.units.find((u) => u.id === unitId);
+    if (!original || original.unitType !== 'titan') return { unitId: '', attachedManipleId: null };
+
+    const nextName = (nameOverride?.trim() || original.name).trim();
+
+    // Deep clone the unit so nested objects/weapons/damage aren’t shared.
+    const cloned: Unit = JSON.parse(JSON.stringify(original)) as Unit;
+    const newId = `unit_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    const newUnit: Unit = {
+      ...cloned,
+      id: newId,
+      name: nextName,
+      playerId: state.playerId,
+      sessionId: null,
+      isLocal: true,
+    };
+
+    dispatch({ type: 'ADD_UNIT', payload: newUnit });
+    await storageService.saveUnits([...state.units, newUnit]);
+
+    // Preserve maniple membership (if any): one-maniple-per-titan.
+    const originalManiple = state.maniples.find((m) => m.titanUnitIds.includes(original.id));
+    if (!originalManiple) return { unitId: newId, attachedManipleId: null };
+
+    const manipleTemplate = manipleTemplates.find((t) => t.id === originalManiple.templateId);
+    if (
+      manipleTemplate &&
+      manipleTemplate.allowedTitanTemplateIds.length > 0 &&
+      !manipleTemplate.allowedTitanTemplateIds.includes(original.templateId)
+    ) {
+      return { unitId: newId, attachedManipleId: null };
+    }
+    if (manipleTemplate && manipleTemplate.maxTitans > 0 && originalManiple.titanUnitIds.length >= manipleTemplate.maxTitans) {
+      return { unitId: newId, attachedManipleId: null };
+    }
+
+    const updatedManiple: Maniple = {
+      ...originalManiple,
+      titanUnitIds: [...originalManiple.titanUnitIds, newId],
+    };
+    dispatch({ type: 'UPDATE_MANIPLE', payload: updatedManiple });
+    await storageService.saveManiples(state.maniples.map((m) => (m.id === updatedManiple.id ? updatedManiple : m)));
+
+    return { unitId: newId, attachedManipleId: updatedManiple.id };
   };
 
   const addTitanFromTemplateToManiple = async (manipleId: string, template: UnitTemplate, name?: string) => {
@@ -291,11 +462,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     // Enforce maniple constraints before creating the unit
     if (manipleTemplate) {
+      // Enforce allowed chassis for this maniple.
       if (!manipleTemplate.allowedTitanTemplateIds.includes(template.id)) return;
-      if (maniple.titanUnitIds.length >= manipleTemplate.maxTitans) return;
+      // If BattleScribe parsing didn’t yield a max (0), treat as “unknown” and don’t cap.
+      if (manipleTemplate.maxTitans > 0 && maniple.titanUnitIds.length >= manipleTemplate.maxTitans) return;
     }
 
-    const unit = unitService.createUnitFromTemplate(template, state.playerId, name);
+    const unit = {
+      ...unitService.createUnitFromTemplate(template, state.playerId, name),
+      battlegroupId: maniple.battlegroupId ?? state.activeBattlegroupId ?? null,
+    };
     dispatch({ type: 'ADD_UNIT', payload: unit });
     await storageService.saveUnits([...state.units, unit]);
 
@@ -500,6 +676,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       id: `maniple_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: name?.trim() || template.name,
       templateId: template.id,
+      battlegroupId: state.activeBattlegroupId ?? null,
+      legionId: null,
       playerId: state.playerId,
       isLocal: true,
       titanUnitIds: [],
@@ -520,9 +698,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteManiple = async (manipleId: string) => {
+    const maniple = state.maniples.find((m) => m.id === manipleId);
+    const titanIdsToDelete = new Set<string>(maniple?.titanUnitIds ?? []);
+
+    // Remove the maniple itself.
     dispatch({ type: 'DELETE_MANIPLE', payload: manipleId });
-    const updated = state.maniples.filter((m) => m.id !== manipleId);
-    await storageService.saveManiples(updated);
+    let updatedManiples = state.maniples.filter((m) => m.id !== manipleId);
+
+    // Also delete all titans that were in this maniple.
+    if (titanIdsToDelete.size > 0) {
+      const updatedUnits = state.units.filter((u) => !titanIdsToDelete.has(u.id));
+      dispatch({ type: 'LOAD_UNITS', payload: updatedUnits });
+      await storageService.saveUnits(updatedUnits);
+
+      // Defensive cleanup: ensure no remaining maniple references deleted titan ids.
+      updatedManiples = updatedManiples.map((m) => ({
+        ...m,
+        titanUnitIds: (m.titanUnitIds ?? []).filter((id) => !titanIdsToDelete.has(id)),
+      }));
+      dispatch({ type: 'LOAD_MANIPLES', payload: updatedManiples });
+    }
+
+    await storageService.saveManiples(updatedManiples);
   };
 
   const addTitanToManiple = async (manipleId: string, unitId: string) => {
@@ -533,7 +730,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const template = manipleTemplates.find((t) => t.id === maniple.templateId);
     if (template && !template.allowedTitanTemplateIds.includes(unit.templateId)) return;
-    if (template && maniple.titanUnitIds.length >= template.maxTitans) return;
+    // If BattleScribe parsing didn’t yield a max (0), treat as “unknown” and don’t cap.
+    if (template && template.maxTitans > 0 && maniple.titanUnitIds.length >= template.maxTitans) return;
 
     // Enforce one-maniple-per-titan: remove from any other maniple first.
     const updatedManiples = state.maniples.map((m) => {
@@ -582,6 +780,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (sanitized.carapaceWeapon !== undefined && sanitized.carapaceWeapon !== null && typeof sanitized.carapaceWeapon === 'string') {
         sanitized.carapaceWeapon = null;
       }
+      // Ensure carapaceWeapon exists as a nullable field (some older saved units may omit it).
+      if (sanitized.unitType === 'titan' && sanitized.carapaceWeapon === undefined) {
+        sanitized.carapaceWeapon = null;
+      }
       return sanitized;
     });
     
@@ -592,66 +794,39 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
     console.log('GameProvider: About to return Provider, safeState.isLoading:', typeof safeState.isLoading, safeState.isLoading);
 
-    return (
-      <GameContext.Provider
-        value={{
-          state: safeState,
-          addUnitFromTemplate,
-          addTitanFromTemplateToManiple,
-          updateUnit,
-          deleteUnit,
-          updateVoidShield,
-          updateVoidShieldCount,
-          updateVoidShieldByIndex,
-          updateDamage,
-          updateCriticalDamage,
-          updateWeapon,
-          updateHeat,
-          updatePlasmaReactor,
-          setPlayerName,
-          addManipleFromTemplate,
-          addManiple,
-          updateManiple,
-          deleteManiple,
-          addTitanToManiple,
-          removeTitanFromManiple,
-        }}
-      >
-        {children}
-      </GameContext.Provider>
-    );
-  } catch (error) {
-    console.error('Error in GameProvider render:', error);
-    // Return a minimal provider to prevent crash
-    return (
-      <GameContext.Provider
-        value={{
-          state: { ...initialState, isLoading: false },
-          addUnitFromTemplate: async () => {},
-          addTitanFromTemplateToManiple: async () => {},
-          updateUnit: async () => {},
-          deleteUnit: async () => {},
-          updateVoidShield: async () => {},
-          updateVoidShieldCount: async () => {},
-          updateVoidShieldByIndex: async () => {},
-          updateDamage: async () => {},
-          updateCriticalDamage: async () => {},
-          updateWeapon: async () => {},
-          updateHeat: async () => {},
-          updatePlasmaReactor: async () => {},
-          setPlayerName: async () => {},
-          addManipleFromTemplate: async () => {},
-          addManiple: async () => {},
-          updateManiple: async () => {},
-          deleteManiple: async () => {},
-          addTitanToManiple: async () => {},
-          removeTitanFromManiple: async () => {},
-        }}
-      >
-        {children}
-      </GameContext.Provider>
-    );
-  }
+  return (
+    <GameContext.Provider
+      value={{
+        state: safeState,
+        createBattlegroup,
+        renameBattlegroup,
+        deleteBattlegroupById,
+        setActiveBattlegroupId,
+        addUnitFromTemplate,
+        addTitanFromTemplateToManiple,
+          duplicateTitan,
+        updateUnit,
+        deleteUnit,
+        updateVoidShield,
+        updateVoidShieldCount,
+        updateVoidShieldByIndex,
+        updateDamage,
+        updateCriticalDamage,
+        updateWeapon,
+        updateHeat,
+        updatePlasmaReactor,
+        setPlayerName,
+        addManipleFromTemplate,
+        addManiple,
+        updateManiple,
+        deleteManiple,
+        addTitanToManiple,
+        removeTitanFromManiple,
+      }}
+    >
+      {children}
+    </GameContext.Provider>
+  );
 }
 
 export function useGame() {
