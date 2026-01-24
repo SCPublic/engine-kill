@@ -11,6 +11,7 @@ import StatsPanel from '../components/StatsPanel';
 import WeaponMount from '../components/WeaponMount';
 import WeaponSelectionModal from '../components/WeaponSelectionModal';
 import SpecialRulesDisplay from '../components/SpecialRulesDisplay';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { bannerTemplates } from '../data/bannerTemplates';
 import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
@@ -268,8 +269,9 @@ export default function UnitEditScreen({
 
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScreenWrapper>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {/* Top Section - Title and Info */}
         <View style={styles.header}>
           <View style={styles.headerTopRow}>
@@ -448,20 +450,23 @@ export default function UnitEditScreen({
         )}
       </ScrollView>
     </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: 'transparent',
   },
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: 'transparent',
   },
   content: {
     padding: spacing.lg,
+    maxWidth: '98%', // Constrain content width to ensure borders are visible
+    alignSelf: 'center', // Center the content
   },
   header: {
     marginBottom: spacing.lg,
@@ -532,6 +537,7 @@ const styles = StyleSheet.create({
   },
   damageSection: {
     marginTop: spacing.sm,
+    marginHorizontal: 0, // Keep within content padding so borders are visible
   },
   weaponRow: {
     flexDirection: 'row',
