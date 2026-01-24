@@ -53,5 +53,13 @@ android/local.properties
 # Keystores
 *.keystore
 
+<<<<<<< Updated upstream
 # BattleScribe local cache
 tmp/bsdata/
+=======
+# Temporary files
+*.input
+**/tasks/*.input
+nul
+C:*
+>>>>>>> Stashed changes

@@ -176,29 +176,17 @@ export default function DamageTrack({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    borderWidth: 3,
-    borderColor: '#000',
-    borderBottomWidth: 0,
-    gap: 16,
+    marginBottom: 16,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 4, // Reduced from 12
+    backgroundColor: '#1a1a1a',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#444',
   },
-  topRow: {
-    flexDirection: 'row' as 'row',
-    alignItems: 'flex-start' as 'flex-start',
-    justifyContent: 'space-between' as 'space-between',
-  },
-  locationButton: {
-    backgroundColor: 'rgba(0, 152, 33, 0.25)',
-    borderWidth: 2,
-    borderColor: '#009821',
-    borderRadius: 8,
-    height: 32,
-    minWidth: 48,
-    width: 100,
-    justifyContent: 'center' as 'center',
-    alignItems: 'center' as 'center',
+  headerRow: {
+    marginBottom: 8,
   },
   locationLabel: {
     color: '#9dffb2',
