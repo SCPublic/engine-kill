@@ -4,5 +4,6 @@ export interface LegionTemplate {
   rules: string[]; // formatted human-readable rule lines
   categoryKey?: string | null; // e.g. "LegioMortis"
   categoryId?: string | null; // BattleScribe categoryEntry id
+  allegiance?: 'loyalist' | 'traitor' | 'unknown';
 }
 

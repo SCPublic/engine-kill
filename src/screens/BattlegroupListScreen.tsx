@@ -7,6 +7,8 @@ import { colors, radius, spacing } from '../theme/tokens';
 import { Battlegroup } from '../models/Battlegroup';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 
+const WEB_MAX_WIDTH = 960;
+
 export default function BattlegroupListScreen() {
   const { state, createBattlegroup, renameBattlegroup, deleteBattlegroupById, setActiveBattlegroupId } = useGame();
   const { titanTemplatesPlayable } = useTitanTemplates();
@@ -69,102 +71,116 @@ export default function BattlegroupListScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text variant="titleLarge" style={styles.textPrimary}>
-          Battlegroups
-        </Text>
-        <Text variant="bodySmall" style={styles.textMuted}>
-          {state.battlegroups.length}
-        </Text>
-      </View>
-
-      {sorted.length === 0 ? (
-        <View style={styles.empty}>
-          <Text variant="bodyMedium" style={styles.textMuted}>
-            Create your first battlegroup.
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <Text variant="titleLarge" style={styles.textPrimary}>
+            Battlegroups
+          </Text>
+          <Text variant="bodySmall" style={styles.textMuted}>
+            {state.battlegroups.length}
           </Text>
         </View>
-      ) : (
-        <FlatList<Battlegroup>
-          data={sorted}
-          keyExtractor={(bg) => bg.id}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <Card style={styles.card} onPress={() => openBattlegroup(item)}>
-              <Card.Content>
-                <View style={styles.row}>
-                  <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                    <Text variant="titleMedium" style={styles.textPrimary} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text variant="bodySmall" style={styles.textMuted} numberOfLines={1}>
-                      {getBattlegroupPoints(item.id)} pts
-                    </Text>
+
+        {sorted.length === 0 ? (
+          <View style={styles.empty}>
+            <Text variant="bodyMedium" style={styles.textMuted}>
+              Create your first battlegroup.
+            </Text>
+          </View>
+        ) : (
+          <FlatList<Battlegroup>
+            data={sorted}
+            keyExtractor={(bg) => bg.id}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => (
+              <Card style={styles.card} onPress={() => openBattlegroup(item)}>
+                <Card.Content>
+                  <View style={styles.row}>
+                    <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                      <Text variant="titleMedium" style={styles.textPrimary} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text variant="bodySmall" style={styles.textMuted} numberOfLines={1}>
+                        {getBattlegroupPoints(item.id)} pts
+                      </Text>
+                    </View>
+                    <View style={styles.actions}>
+                      <IconButton
+                        icon="pencil-outline"
+                        size={18}
+                        iconColor={colors.text}
+                        onPress={() => openRename(item)}
+                        accessibilityLabel={`Rename ${item.name}`}
+                      />
+                      <IconButton
+                        icon="trash-can-outline"
+                        size={18}
+                        iconColor={colors.text}
+                        onPress={() => deleteBattlegroupById(item.id)}
+                        accessibilityLabel={`Delete ${item.name}`}
+                      />
+                    </View>
                   </View>
-                  <View style={styles.actions}>
-                    <IconButton
-                      icon="pencil-outline"
-                      size={18}
-                      iconColor={colors.text}
-                      onPress={() => openRename(item)}
-                      accessibilityLabel={`Rename ${item.name}`}
-                    />
-                    <IconButton
-                      icon="trash-can-outline"
-                      size={18}
-                      iconColor={colors.text}
-                      onPress={() => deleteBattlegroupById(item.id)}
-                      accessibilityLabel={`Delete ${item.name}`}
-                    />
-                  </View>
-                </View>
-              </Card.Content>
-            </Card>
-          )}
+                </Card.Content>
+              </Card>
+            )}
+          />
+        )}
+
+        <Fab
+          icon="plus"
+          style={styles.fab}
+          color={colors.text}
+          onPress={() => setIsCreateOpen(true)}
+          accessibilityLabel="Create battlegroup"
         />
-      )}
 
-      <Fab icon="plus" style={styles.fab} onPress={() => setIsCreateOpen(true)} accessibilityLabel="Create battlegroup" />
+        <Portal>
+          <Modal visible={isCreateOpen} onDismiss={() => setIsCreateOpen(false)} contentContainerStyle={styles.modal}>
+            <View style={styles.modalHeader}>
+              <Text variant="titleLarge" style={styles.textPrimary}>
+                New battlegroup
+              </Text>
+              <IconButton icon="close" iconColor={colors.text} onPress={() => setIsCreateOpen(false)} />
+            </View>
+            <TextInput
+              label="Battlegroup name"
+              value={createName}
+              onChangeText={setCreateName}
+              mode="outlined"
+              style={styles.input}
+              outlineColor={colors.border}
+              activeOutlineColor={colors.text}
+              textColor={colors.text}
+            />
+            <View style={styles.modalActions}>
+              <IconButton icon="check" iconColor={colors.text} onPress={submitCreate} accessibilityLabel="Create" />
+            </View>
+          </Modal>
 
-      <Portal>
-        <Modal visible={isCreateOpen} onDismiss={() => setIsCreateOpen(false)} contentContainerStyle={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text variant="titleLarge" style={styles.textPrimary}>
-              New battlegroup
-            </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsCreateOpen(false)} />
-          </View>
-          <TextInput
-            label="Battlegroup name"
-            value={createName}
-            onChangeText={setCreateName}
-            mode="outlined"
-            style={styles.input}
-          />
-          <View style={styles.modalActions}>
-            <IconButton icon="check" iconColor={colors.text} onPress={submitCreate} accessibilityLabel="Create" />
-          </View>
-        </Modal>
-
-        <Modal visible={isRenameOpen} onDismiss={closeRename} contentContainerStyle={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text variant="titleLarge" style={styles.textPrimary}>
-              Rename battlegroup
-            </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={closeRename} />
-          </View>
-          <TextInput
-            label="Battlegroup name"
-            value={renameName}
-            onChangeText={setRenameName}
-            mode="outlined"
-            style={styles.input}
-          />
-          <View style={styles.modalActions}>
-            <IconButton icon="check" iconColor={colors.text} onPress={submitRename} accessibilityLabel="Save name" />
-          </View>
-        </Modal>
-      </Portal>
+          <Modal visible={isRenameOpen} onDismiss={closeRename} contentContainerStyle={styles.modal}>
+            <View style={styles.modalHeader}>
+              <Text variant="titleLarge" style={styles.textPrimary}>
+                Rename battlegroup
+              </Text>
+              <IconButton icon="close" iconColor={colors.text} onPress={closeRename} />
+            </View>
+            <TextInput
+              label="Battlegroup name"
+              value={renameName}
+              onChangeText={setRenameName}
+              mode="outlined"
+              style={styles.input}
+              outlineColor={colors.border}
+              activeOutlineColor={colors.text}
+              textColor={colors.text}
+            />
+            <View style={styles.modalActions}>
+              <IconButton icon="check" iconColor={colors.text} onPress={submitRename} accessibilityLabel="Save name" />
+            </View>
+          </Modal>
+        </Portal>
+      </View>
     </SafeAreaView>
   );
 }
@@ -173,6 +189,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: WEB_MAX_WIDTH,
+    alignSelf: 'center',
   },
   header: {
     paddingHorizontal: spacing.lg,
@@ -210,10 +232,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: spacing.lg,
     bottom: spacing.lg,
+    backgroundColor: colors.panelAlt,
   },
   modal: {
     backgroundColor: colors.panel,
-    marginHorizontal: spacing.lg,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     borderRadius: radius.lg,
     padding: spacing.md,
   },

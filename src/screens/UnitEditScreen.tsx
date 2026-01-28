@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Text, TextInput } from 'react-native';
+import { StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
 import { IconButton } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
@@ -28,7 +28,8 @@ export default function UnitEditScreen({
   onBack?: () => void;
 }) {
   const { isLg, width } = useBreakpoint();
-  const { state, updateUnit, updateVoidShield, updateVoidShieldCount, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updateHeat, updatePlasmaReactor } = useGame();
+  const { state, updateUnit, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updatePlasmaReactor } =
+    useGame();
   const { titanTemplates } = useTitanTemplates();
   
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
@@ -39,25 +40,26 @@ export default function UnitEditScreen({
 
   const unit = state.units.find((u) => u.id === unitId);
 
-  if (!unit) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Unit not found</Text>
-      </View>
-    );
-  }
-
   useEffect(() => {
+    if (!unit) return;
     setNameDraft(unit.name ?? '');
-  }, [unit.id, unit.name]);
+  }, [unit?.id, unit?.name]);
 
   // Find template for hit tables and critical effects
-  const templates = unit.unitType === 'titan' ? titanTemplates : bannerTemplates;
-  const template = templates.find((t) => t.id === unit.templateId);
+  const templates = unit?.unitType === 'titan' ? titanTemplates : bannerTemplates;
+  const template = templates.find((t) => t.id === unit?.templateId);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
 
+  const unitManiple = useMemo(() => {
+    if (!unit || unit.unitType !== 'titan') return undefined;
+    const bgId = (unit.battlegroupId ?? null) ?? (state.activeBattlegroupId ?? null);
+    return state.maniples.find(
+      (m) => (m.battlegroupId ?? null) === bgId && m.titanUnitIds.includes(unit.id)
+    );
+  }, [state.activeBattlegroupId, state.maniples, unit?.battlegroupId, unit?.id, unit?.unitType]);
+
   const totalPoints = useMemo(() => {
-    if (unit.unitType !== 'titan') return 0;
+    if (!unit || unit.unitType !== 'titan') return 0;
     const base = template?.basePoints ?? 0;
     const weapons =
       (unit.leftWeapon?.points ?? 0) +
@@ -65,13 +67,20 @@ export default function UnitEditScreen({
       (unit.carapaceWeapon?.points ?? 0);
     const upgrades = (unit.upgrades ?? []).reduce((sum, u) => sum + (u.points ?? 0), 0);
     return base + weapons + upgrades;
-  }, [template?.basePoints, unit.carapaceWeapon?.points, unit.leftWeapon?.points, unit.rightWeapon?.points, unit.unitType]);
+  }, [
+    template?.basePoints,
+    unit?.carapaceWeapon?.points,
+    unit?.leftWeapon?.points,
+    unit?.rightWeapon?.points,
+    unit?.unitType,
+    unit?.upgrades,
+  ]);
 
   // Small-slice BSData integration: Warhound weapon cards.
   useEffect(() => {
     let cancelled = false;
     // If the template already has a large BSData-derived weapon list, don't double-fetch.
-    if (unit.unitType !== 'titan' || unit.templateId !== 'warhound') return;
+    if (!unit || unit.unitType !== 'titan' || unit.templateId !== 'warhound') return;
     if ((template?.availableWeapons?.length ?? 0) > 6) return;
     (async () => {
       try {
@@ -85,10 +94,10 @@ export default function UnitEditScreen({
     return () => {
       cancelled = true;
     };
-  }, [unit.templateId, unit.unitType, template?.availableWeapons?.length]);
+  }, [unit?.templateId, unit?.unitType, template?.availableWeapons?.length]);
 
   const effectiveWeapons: WeaponTemplate[] = useMemo(() => {
-    if (!template?.availableWeapons) return [];
+    if (!unit || !template?.availableWeapons) return [];
     if (unit.unitType === 'titan' && unit.templateId === 'warhound' && remoteWeapons?.length) {
       // Merge: keep local list stable, overlay any BSData-derived fields by matching weapon id.
       const base = template.availableWeapons;
@@ -106,11 +115,12 @@ export default function UnitEditScreen({
       return merged;
     }
     return template.availableWeapons;
-  }, [remoteWeapons, template?.availableWeapons, unit.templateId, unit.unitType]);
+  }, [remoteWeapons, template?.availableWeapons, unit?.templateId, unit?.unitType]);
 
   // Backfill newly-added weapon overlay fields (repairRoll/disabledRollLines) onto already-equipped weapons.
   // This avoids requiring users to re-select weapons after template data changes.
   useEffect(() => {
+    if (!unit) return;
     if (!effectiveWeapons.length) return;
 
     const findWeaponTemplate = (weaponId?: string | null) =>
@@ -148,22 +158,21 @@ export default function UnitEditScreen({
     template?.id,
     effectiveWeapons,
     hasCarapaceWeapon,
-    unit.leftWeapon?.id,
-    unit.rightWeapon?.id,
-    unit.carapaceWeapon?.id,
+    unit?.leftWeapon?.id,
+    unit?.rightWeapon?.id,
+    unit?.carapaceWeapon?.id,
   ]);
 
-  const weaponMounts: Array<{
-    key: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon';
-    label: string;
-    weapon: any;
-  }> = [
-    { key: 'leftWeapon', label: 'LEFT ARM', weapon: unit.leftWeapon },
-    ...(hasCarapaceWeapon
-      ? [{ key: 'carapaceWeapon' as const, label: 'CARAPACE', weapon: unit.carapaceWeapon || null }]
-      : []),
-    { key: 'rightWeapon', label: 'RIGHT ARM', weapon: unit.rightWeapon },
-  ];
+  const weaponMounts = useMemo(() => {
+    if (!unit) return [];
+    return [
+      { key: 'leftWeapon' as const, label: 'LEFT ARM', weapon: unit.leftWeapon },
+      ...(hasCarapaceWeapon
+        ? [{ key: 'carapaceWeapon' as const, label: 'CARAPACE', weapon: unit.carapaceWeapon || null }]
+        : []),
+      { key: 'rightWeapon' as const, label: 'RIGHT ARM', weapon: unit.rightWeapon },
+    ];
+  }, [hasCarapaceWeapon, unit]);
 
   const handleDamageChange = (location: 'head' | 'body' | 'legs', value: number) => {
     updateDamage(unitId, location, value);
@@ -189,26 +198,38 @@ export default function UnitEditScreen({
     }
   }, [unit?.id]); // Only run once per unit
 
-  // Calculate which void shield pip is selected (only one can be selected)
-  // Find which facing has a shield, default to 0 (leftmost)
-  const selectedIndex = 
-    unit.voidShields.front > 0 ? 0 :
-    unit.voidShields.left > 0 ? 1 :
-    unit.voidShields.right > 0 ? 2 :
-    unit.voidShields.rear > 0 ? 3 : 0; // Default to 0 (leftmost)
+  const selectedIndex = useMemo(() => {
+    if (!unit) return 0;
+    // Find which facing has a shield, default to 0 (leftmost)
+    return unit.voidShields.front > 0
+      ? 0
+      : unit.voidShields.left > 0
+        ? 1
+        : unit.voidShields.right > 0
+          ? 2
+          : unit.voidShields.rear > 0
+            ? 3
+            : 0;
+  }, [
+    unit?.voidShields.front,
+    unit?.voidShields.left,
+    unit?.voidShields.right,
+    unit?.voidShields.rear,
+  ]);
   
   const shieldSaves = useMemo(() => {
-    const v = unit.voidShieldSaves;
+    const v = unit?.voidShieldSaves;
     if (Array.isArray(v) && v.length > 0) return v;
     return ['3+', '4+', '4+', 'X'];
-  }, [unit.voidShieldSaves]);
+  }, [unit?.voidShieldSaves]);
 
   // Render pips based on save list length, but keep the underlying selection
   // logic mapped to the first 4 pips (front/left/right/rear) for now.
   const shieldPipCount = Math.max(4, shieldSaves.length);
-  const activeShields = Array(shieldPipCount)
-    .fill(0)
-    .map((_, i) => (i === selectedIndex ? 1 : 0));
+  const activeShields = useMemo(
+    () => new Array(shieldPipCount).fill(0).map((_, i) => (i === selectedIndex ? 1 : 0)),
+    [selectedIndex, shieldPipCount]
+  );
 
   const handleShieldChange = async (selectedIndex: number) => {
     await updateVoidShieldByIndex(unitId, selectedIndex);
@@ -258,6 +279,7 @@ export default function UnitEditScreen({
   };
 
   const toggleWeaponDamaged = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
+    if (!unit) return;
     const weapon = unit[mount];
     if (!weapon) {
       openWeaponModal(mount);
@@ -266,6 +288,18 @@ export default function UnitEditScreen({
     const nextStatus = weapon.status === 'disabled' ? 'ready' : 'disabled';
     updateWeapon(unitId, mount, { ...weapon, status: nextStatus });
   };
+
+  if (!unit) {
+    return (
+      <ScreenWrapper>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.container}>
+            <Text style={styles.errorText}>Unit not found</Text>
+          </View>
+        </SafeAreaView>
+      </ScreenWrapper>
+    );
+  }
 
 
   return (
@@ -539,6 +573,47 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginHorizontal: 0, // Keep within content padding so borders are visible
   },
+  upgradesSection: {
+    marginTop: spacing.lg,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  sectionEmpty: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+  upgradeCard: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.panel,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  upgradeTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  upgradeRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  ruleLine: {
+    color: colors.textMuted,
+    marginTop: 6,
+  },
+  textPrimary: {
+    color: colors.text,
+  },
+  textMuted: {
+    color: colors.textMuted,
+  },
   weaponRow: {
     flexDirection: 'row',
     marginTop: spacing.lg,
@@ -588,5 +663,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginTop: 50,
+  },
+
+  // Modal styles (shared with other screens)
+  addModal: {
+    backgroundColor: colors.panel,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    maxHeight: '90%',
+  },
+  addHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  addTitle: {
+    color: colors.text,
+  },
+  templateListContainer: {
+    flex: 1,
+    minHeight: 320,
+  },
+  addScroll: {
+    flex: 1,
+  },
+  addScrollContent: {
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  templateCard: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+  },
+  templateMeta: {
+    color: colors.textMuted,
+  },
+  ruleSectionTitle: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    fontWeight: '600',
   },
 });

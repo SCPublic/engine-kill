@@ -1,5 +1,5 @@
 import React from 'react';
-import { PaperProvider, MD3LightTheme, ActivityIndicator } from 'react-native-paper';
+import { PaperProvider, MD3DarkTheme, ActivityIndicator } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { useFonts, RobotoMono_400Regular, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
@@ -9,12 +9,18 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import HomeScreen from './src/screens/HomeScreen';
 import UnitEditScreen from './src/screens/UnitEditScreen';
 import BattlegroupListScreen from './src/screens/BattlegroupListScreen';
+import { colors } from './src/theme/tokens';
 
 const theme = {
-  ...MD3LightTheme,
+  ...MD3DarkTheme,
   colors: {
-    ...MD3LightTheme.colors,
-    background: '#f5f5f5',
+    ...MD3DarkTheme.colors,
+    primary: colors.text,
+    secondary: colors.textMuted,
+    background: colors.bg,
+    surface: colors.panel,
+    surfaceVariant: colors.panelAlt,
+    outline: colors.border,
   },
 };
 
@@ -59,7 +65,7 @@ export default function App() {
     <ErrorBoundary>
       <PaperProvider theme={theme}>
         <GameProvider>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
           <AppNavigator />
         </GameProvider>
       </PaperProvider>

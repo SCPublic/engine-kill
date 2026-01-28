@@ -134,7 +134,7 @@ interface GameContextType {
 
   // Maniples (WIP)
   // We'll keep the API small for now; more rules/validation comes later.
-  addManipleFromTemplate: (template: ManipleTemplate, name?: string) => Promise<void>;
+  addManipleFromTemplate: (template: ManipleTemplate, name?: string, legionId?: string | null) => Promise<void>;
   addManiple: (maniple: Maniple) => Promise<void>;
   updateManiple: (maniple: Maniple) => Promise<void>;
   deleteManiple: (manipleId: string) => Promise<void>;
@@ -670,14 +670,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await storageService.savePlayerName(name);
   };
 
-  const addManipleFromTemplate = async (template: ManipleTemplate, name?: string) => {
+  const addManipleFromTemplate = async (template: ManipleTemplate, name?: string, legionId?: string | null) => {
     if (!state.playerId) return;
     const maniple: Maniple = {
       id: `maniple_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: name?.trim() || template.name,
       templateId: template.id,
       battlegroupId: state.activeBattlegroupId ?? null,
-      legionId: null,
+      legionId: legionId ?? null,
       playerId: state.playerId,
       isLocal: true,
       titanUnitIds: [],
