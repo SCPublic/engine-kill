@@ -26,7 +26,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "publicPath": "/engine-kill/",
+      "output": "single"
+    },
+    "experiments": {
+      "baseUrl": "/engine-kill"
     },
     "assetBundlePatterns": [
       "**/*"
