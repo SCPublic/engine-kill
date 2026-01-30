@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, View, StyleSheet, FlatList, SectionList } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, View, StyleSheet, FlatList, SectionList, ScrollView } from 'react-native';
 import {
   Card,
   Text,
@@ -11,6 +11,7 @@ import {
   IconButton,
   Button,
   ActivityIndicator,
+  Dialog,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../theme/tokens';
@@ -26,6 +27,8 @@ import { useManipleTemplates } from '../hooks/useManipleTemplates';
 import { useLegionTemplates } from '../hooks/useLegionTemplates';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { usePrincepsTraitTemplates } from '../hooks/usePrincepsTraitTemplates';
+
+const WEB_MAX_WIDTH = 1100;
 
 export default function HomeScreen({
   onOpenUnit,
@@ -62,6 +65,8 @@ export default function HomeScreen({
 
   const [isAddManipleOpen, setIsAddManipleOpen] = useState(false);
   const [customManipleName, setCustomManipleName] = useState('');
+  const [createManipleLegionId, setCreateManipleLegionId] = useState<string | null>(null);
+  const [legionPickerTarget, setLegionPickerTarget] = useState<'manage' | 'create'>('manage');
 
   const [manageManipleId, setManageManipleId] = useState<string | null>(null);
   const [addUnitTargetManipleId, setAddUnitTargetManipleId] = useState<string | null>(null);
@@ -70,6 +75,9 @@ export default function HomeScreen({
   const [isUpgradePickerOpen, setIsUpgradePickerOpen] = useState(false);
   const [isTraitPickerOpen, setIsTraitPickerOpen] = useState(false);
   const [loyaltyFilter, setLoyaltyFilter] = useState<'loyalist' | 'traitor'>('traitor');
+  const [titanNameDraft, setTitanNameDraft] = useState('');
+  const [confirmDeleteUnitId, setConfirmDeleteUnitId] = useState<string | null>(null);
+  const [confirmDeleteManipleId, setConfirmDeleteManipleId] = useState<string | null>(null);
 
   const templates: UnitTemplate[] = useMemo(
     () => (unitType === 'titan' ? titanTemplatesPlayable : bannerTemplates),
@@ -94,18 +102,7 @@ export default function HomeScreen({
   };
 
   const handleDeleteUnit = (unit: Unit) => {
-    Alert.alert(
-      'Delete unit?',
-      `Delete "${unit.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteUnit(unit.id),
-        },
-      ]
-    );
+    setConfirmDeleteUnitId(unit.id);
   };
 
   const handleSelectTemplate = async (template: UnitTemplate) => {
@@ -137,18 +134,7 @@ export default function HomeScreen({
     isManiplesLoading || isTitansLoading || isLegionsLoading || isUpgradesLoading || isTraitsLoading;
 
   const handleDeleteManiple = (maniple: Maniple) => {
-    Alert.alert(
-      'Delete maniple?',
-      `Delete "${maniple.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteManiple(maniple.id),
-        },
-      ]
-    );
+    setConfirmDeleteManipleId(maniple.id);
   };
 
   const showManipleValidation = (maniple: Maniple, minRequired: number, current: number) => {
@@ -159,9 +145,14 @@ export default function HomeScreen({
   };
 
   const handleSelectManipleTemplate = async (template: ManipleTemplate) => {
+    if (!createManipleLegionId) {
+      Alert.alert('Select a legion', 'Please select a legion before creating a maniple.');
+      return;
+    }
     const name = customManipleName.trim() || template.name;
-    await addManipleFromTemplate(template, name);
+    await addManipleFromTemplate(template, name, createManipleLegionId);
     setCustomManipleName('');
+    setCreateManipleLegionId(null);
     setIsAddManipleOpen(false);
   };
 
@@ -180,6 +171,7 @@ export default function HomeScreen({
   const manageLegion = manageManiple?.legionId
     ? legionTemplates.find((l) => l.id === manageManiple.legionId)
     : undefined;
+  const createLegion = createManipleLegionId ? legionTemplates.find((l) => l.id === createManipleLegionId) : undefined;
   const titanUnits = useMemo(() => battlegroupUnits.filter((u) => u.unitType === 'titan'), [battlegroupUnits]);
   const bannerUnits = useMemo(() => battlegroupUnits.filter((u) => u.unitType === 'banner'), [battlegroupUnits]);
   const assignedTitanIds = useMemo(
@@ -200,6 +192,31 @@ export default function HomeScreen({
     if (!selectedTitanManiple?.legionId) return undefined;
     return legionTemplates.find((l) => l.id === selectedTitanManiple.legionId);
   }, [legionTemplates, selectedTitanManiple?.legionId]);
+
+  // Auto-lock upgrade allegiance to the maniple legion (when known).
+  useEffect(() => {
+    const a = selectedTitanLegion?.allegiance;
+    if (a === 'loyalist' || a === 'traitor') setLoyaltyFilter(a);
+  }, [selectedTitanLegion?.allegiance]);
+
+  useEffect(() => {
+    if (!editTitanId) {
+      setTitanNameDraft('');
+      return;
+    }
+    setTitanNameDraft(selectedTitan?.name ?? '');
+  }, [editTitanId, selectedTitan?.name]);
+
+  const saveTitanName = () => {
+    if (!selectedTitan) return;
+    const next = titanNameDraft.trim();
+    if (!next) {
+      setTitanNameDraft(selectedTitan.name);
+      return;
+    }
+    if (next === selectedTitan.name) return;
+    void updateUnit({ ...selectedTitan, name: next });
+  };
 
   const princepsTemplate = upgradeTemplates.find((u) => u.name.toLowerCase() === 'princeps seniores');
   const PRINCEPS_SENIORES_RULES = princepsTemplate?.rules?.length
@@ -311,9 +328,9 @@ export default function HomeScreen({
       <SectionList<Unit, UnitSection>
         sections={unitSections}
         keyExtractor={(u) => u.id}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}
         ListHeaderComponent={
-          <View style={styles.headerContainer}>
+          <View style={[styles.headerContainer, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}>
             <View style={styles.sectionHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 {onBack ? (
@@ -572,6 +589,8 @@ export default function HomeScreen({
         visible
         icon={fabOpen ? 'close' : 'plus'}
         style={styles.fab}
+        fabStyle={{ backgroundColor: colors.panelAlt }}
+        color={colors.text}
         onStateChange={({ open }) => setFabOpen(open)}
         actions={[
           {
@@ -591,6 +610,53 @@ export default function HomeScreen({
       />
 
       <Portal>
+        <Dialog visible={!!confirmDeleteUnitId} onDismiss={() => setConfirmDeleteUnitId(null)}>
+          <Dialog.Title>Delete titan?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={styles.textMuted}>
+              Delete &quot;{confirmDeleteUnitId ? titanUnits.find((u) => u.id === confirmDeleteUnitId)?.name ?? 'Titan' : 'Titan'}
+              &quot;? This cannot be undone.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setConfirmDeleteUnitId(null)}>Cancel</Button>
+            <Button
+              textColor="#ff4d4d"
+              onPress={() => {
+                if (confirmDeleteUnitId) deleteUnit(confirmDeleteUnitId);
+                setConfirmDeleteUnitId(null);
+              }}
+            >
+              Delete
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={!!confirmDeleteManipleId} onDismiss={() => setConfirmDeleteManipleId(null)}>
+          <Dialog.Title>Delete maniple?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={styles.textMuted}>
+              Delete &quot;
+              {confirmDeleteManipleId
+                ? battlegroupManiples.find((m) => m.id === confirmDeleteManipleId)?.name ?? 'Maniple'
+                : 'Maniple'}
+              &quot;? This cannot be undone.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setConfirmDeleteManipleId(null)}>Cancel</Button>
+            <Button
+              textColor="#ff4d4d"
+              onPress={() => {
+                if (confirmDeleteManipleId) deleteManiple(confirmDeleteManipleId);
+                setConfirmDeleteManipleId(null);
+              }}
+            >
+              Delete
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
         <Modal
           visible={isAddUnitOpen}
           onDismiss={() => {
@@ -678,7 +744,11 @@ export default function HomeScreen({
 
         <Modal
           visible={isAddManipleOpen}
-          onDismiss={() => setIsAddManipleOpen(false)}
+          onDismiss={() => {
+            setIsAddManipleOpen(false);
+            setCustomManipleName('');
+            setCreateManipleLegionId(null);
+          }}
           contentContainerStyle={styles.addModal}
         >
           <View style={styles.addHeaderRow}>
@@ -686,6 +756,21 @@ export default function HomeScreen({
               Add Maniple
             </Text>
             <IconButton icon="close" iconColor={colors.text} onPress={() => setIsAddManipleOpen(false)} />
+          </View>
+
+          <View style={styles.legionPickerRow}>
+            <Text variant="bodySmall" style={styles.templateMeta}>
+              Legion:
+            </Text>
+            <Button
+              mode="outlined"
+              onPress={() => {
+                setLegionPickerTarget('create');
+                setIsLegionPickerOpen(true);
+              }}
+            >
+              {createLegion?.name ?? 'Select legion'}
+            </Button>
           </View>
 
           <TextInput
@@ -763,7 +848,14 @@ export default function HomeScreen({
             <Text variant="bodySmall" style={styles.templateMeta}>
               Legion:
             </Text>
-            <Button mode="outlined" onPress={() => setIsLegionPickerOpen(true)} disabled={!manageManiple}>
+            <Button
+              mode="outlined"
+              onPress={() => {
+                setLegionPickerTarget('manage');
+                setIsLegionPickerOpen(true);
+              }}
+              disabled={!manageManiple}
+            >
               {manageLegion?.name ?? 'None'}
             </Button>
             {manageLegion ? (
@@ -790,26 +882,8 @@ export default function HomeScreen({
             </View>
           ) : null}
 
-          <View style={styles.manageTopRow}>
-            <Button
-              mode="contained"
-              icon="plus"
-              disabled={!manageManiple || !canAddToManage}
-              onPress={() => {
-                if (!manageManiple) return;
-                // Close this modal first; then open the "Add Unit" modal shortly after.
-                // NOTE: react-native-paper Modal's `onDismiss` is not reliably called when closing programmatically,
-                // so we schedule the next modal here.
-                setManageManipleId(null);
-                setUnitType('titan');
-                setCustomName('');
-                setAddUnitTargetManipleId(manageManiple.id);
-                setTimeout(() => setIsAddUnitOpen(true), 50);
-              }}
-            >
-              Create Titan
-            </Button>
-          </View>
+          {/* Intentionally no "Create Titan" button here.
+              Maniple management should only manage the roster, not create new units. */}
 
           {manageManiple &&
           manageTemplate &&
@@ -850,7 +924,7 @@ export default function HomeScreen({
               }}
               ListEmptyComponent={
                 <Text variant="bodySmall" style={styles.sectionEmpty}>
-                  No titans in this maniple yet. Tap "Create Titan" above.
+                  No titans in this maniple yet.
                 </Text>
               }
             />
@@ -889,8 +963,12 @@ export default function HomeScreen({
                   <Card
                     style={styles.templateCard}
                     onPress={() => {
-                      if (!manageManiple) return;
-                      void updateManiple({ ...manageManiple, legionId: legion.id });
+                      if (legionPickerTarget === 'manage') {
+                        if (!manageManiple) return;
+                        void updateManiple({ ...manageManiple, legionId: legion.id });
+                      } else {
+                        setCreateManipleLegionId(legion.id);
+                      }
                       setIsLegionPickerOpen(false);
                     }}
                   >
@@ -922,27 +1000,47 @@ export default function HomeScreen({
         >
           <View style={styles.addHeaderRow}>
             <Text variant="titleLarge" style={styles.addTitle}>
-              {selectedTitan ? selectedTitan.name : 'Titan'}
+              {titanNameDraft || (selectedTitan ? selectedTitan.name : 'Titan')}
             </Text>
             <IconButton icon="close" iconColor={colors.text} onPress={() => setEditTitanId(null)} />
           </View>
 
-          {selectedTitanManiple ? (
-            <View style={{ marginTop: spacing.sm }}>
-              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
-                Princeps Seniores
-              </Text>
-              <Button
-                mode={selectedTitan?.isPrincepsSeniores ? 'contained' : 'outlined'}
-                onPress={() => togglePrincepsSeniores(!selectedTitan?.isPrincepsSeniores)}
-              >
-                {selectedTitan?.isPrincepsSeniores ? 'Enabled' : 'Enable'}
-              </Button>
-              {PRINCEPS_SENIORES_RULES.map((r, idx) => (
-                <Text key={`ps:${idx}`} variant="bodySmall" style={styles.manipleRule}>
-                  {r}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
+            <View style={{ marginTop: spacing.sm, marginBottom: spacing.sm, zIndex: 2 }}>
+              <TextInput
+                label="Name"
+                mode="outlined"
+                value={titanNameDraft}
+                onChangeText={setTitanNameDraft}
+                onBlur={saveTitanName}
+                onSubmitEditing={saveTitanName}
+                returnKeyType="done"
+                autoCapitalize="words"
+                autoCorrect={false}
+                dense
+                style={{ backgroundColor: colors.panel }}
+                outlineColor={colors.border}
+                activeOutlineColor={colors.text}
+                textColor={colors.text}
+              />
+            </View>
+
+            {selectedTitanManiple ? (
+              <View style={{ marginTop: spacing.sm }}>
+                <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                  Princeps Seniores
                 </Text>
-              ))}
+                <Button
+                  mode={selectedTitan?.isPrincepsSeniores ? 'contained' : 'outlined'}
+                  onPress={() => togglePrincepsSeniores(!selectedTitan?.isPrincepsSeniores)}
+                >
+                  {selectedTitan?.isPrincepsSeniores ? 'Enabled' : 'Enable'}
+                </Button>
+                {PRINCEPS_SENIORES_RULES.map((r, idx) => (
+                  <Text key={`ps:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                    {r}
+                  </Text>
+                ))}
 
               {selectedTitan?.isPrincepsSeniores ? (
                 <View style={{ marginTop: spacing.sm }}>
@@ -1028,6 +1126,7 @@ export default function HomeScreen({
               ))
             )}
           </View>
+          </ScrollView>
         </Modal>
 
         <Modal
@@ -1051,37 +1150,122 @@ export default function HomeScreen({
                 No personal traits found in BattleScribe data.
               </Text>
             ) : (
-              <FlatList
-                data={princepsTraitTemplates.filter((t) => {
-                  const legioCategoryId = selectedTitanLegion?.categoryId ?? null;
-                  if (!legioCategoryId) return true;
-                  return (t.legioCategoryId ?? null) === legioCategoryId;
-                })}
-                keyExtractor={(t) => t.id}
-                style={styles.addScroll}
-                contentContainerStyle={styles.addScrollContent}
-                keyboardShouldPersistTaps="handled"
-                renderItem={({ item }) => (
-                  <Card
-                    style={styles.templateCard}
-                    onPress={() => {
-                      setPrincepsTrait(item.id);
-                      setIsTraitPickerOpen(false);
-                    }}
-                  >
-                    <Card.Content>
-                      <Text variant="titleMedium" style={styles.textPrimary}>
-                        {item.name}
+              (() => {
+                // BSData personal trait tables are keyed to the Legio selectionEntry id (not the Legio categoryEntry id).
+                const legioSelectionEntryId =
+                  selectedTitanLegion?.id?.startsWith('bslegio:') ? selectedTitanLegion.id.slice('bslegio:'.length) : null;
+                const standard = princepsTraitTemplates.filter((t) => t.traitGroup === 'standard');
+                const legionSpecific = legioSelectionEntryId
+                  ? princepsTraitTemplates.filter(
+                      (t) => t.traitGroup === 'legio' && (t.legioCategoryId ?? null) === legioSelectionEntryId
+                    )
+                  : [];
+
+                if (!legioSelectionEntryId) {
+                  if (standard.length === 0) {
+                    return (
+                      <Text variant="bodySmall" style={styles.sectionEmpty}>
+                        No standard personal traits found in BattleScribe data.
                       </Text>
-                      {(item.rules ?? []).slice(0, 2).map((r, idx) => (
-                        <Text key={`${item.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
-                          {r}
-                        </Text>
-                      ))}
-                    </Card.Content>
-                  </Card>
-                )}
-              />
+                    );
+                  }
+                  return (
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodySmall" style={styles.sectionEmpty}>
+                        Select a legion for the maniple to add legion-specific personal traits.
+                      </Text>
+                      <FlatList
+                        data={[{ kind: 'header', title: 'Standard' } as const, ...standard.map((t) => ({ kind: 'trait', t } as const))]}
+                        keyExtractor={(row, idx) => (row.kind === 'trait' ? `t:${row.t.id}` : `h:${idx}`)}
+                        style={styles.addScroll}
+                        contentContainerStyle={styles.addScrollContent}
+                        keyboardShouldPersistTaps="handled"
+                        renderItem={({ item }) => {
+                          if (item.kind === 'header') {
+                            return (
+                              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                                {item.title}
+                              </Text>
+                            );
+                          }
+                          return (
+                            <Card
+                              style={styles.templateCard}
+                              onPress={() => {
+                                setPrincepsTrait(item.t.id);
+                                setIsTraitPickerOpen(false);
+                              }}
+                            >
+                              <Card.Content>
+                                <Text variant="titleMedium" style={styles.textPrimary}>
+                                  {item.t.name}
+                                </Text>
+                                {(item.t.rules ?? []).slice(0, 2).map((r, idx) => (
+                                  <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                                    {r}
+                                  </Text>
+                                ))}
+                              </Card.Content>
+                            </Card>
+                          );
+                        }}
+                      />
+                    </View>
+                  );
+                }
+
+                if (standard.length === 0 && legionSpecific.length === 0) {
+                  return (
+                    <Text variant="bodySmall" style={styles.sectionEmpty}>
+                      No personal traits found for this legion in BattleScribe data.
+                    </Text>
+                  );
+                }
+
+                return (
+                  <FlatList
+                    data={[
+                      { kind: 'header', title: 'Standard' } as const,
+                      ...standard.map((t) => ({ kind: 'trait', t } as const)),
+                      { kind: 'header', title: selectedTitanLegion?.name ?? 'Legion' } as const,
+                      ...legionSpecific.map((t) => ({ kind: 'trait', t } as const)),
+                    ]}
+                    keyExtractor={(row, idx) => (row.kind === 'trait' ? `t:${row.t.id}` : `h:${row.title}:${idx}`)}
+                    style={styles.addScroll}
+                    contentContainerStyle={styles.addScrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item }) => {
+                      if (item.kind === 'header') {
+                        return (
+                          <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                            {item.title}
+                          </Text>
+                        );
+                      }
+                      return (
+                        <Card
+                          style={styles.templateCard}
+                          onPress={() => {
+                            setPrincepsTrait(item.t.id);
+                            setIsTraitPickerOpen(false);
+                          }}
+                        >
+                          <Card.Content>
+                            <Text variant="titleMedium" style={styles.textPrimary}>
+                              {item.t.name}
+                            </Text>
+                            {(item.t.rules ?? []).slice(0, 2).map((r, idx) => (
+                              <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                                {r}
+                              </Text>
+                            ))}
+                          </Card.Content>
+                        </Card>
+                      );
+                    }}
+                  />
+                );
+              })()
             )}
           </View>
         </Modal>
@@ -1109,14 +1293,20 @@ export default function HomeScreen({
             ) : (
               <View style={{ flex: 1 }}>
                 <View style={{ marginBottom: spacing.sm }}>
-                  <SegmentedButtons
-                    value={loyaltyFilter}
-                    onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
-                    buttons={[
-                      { value: 'loyalist', label: 'Loyalist' },
-                      { value: 'traitor', label: 'Traitor' },
-                    ]}
-                  />
+                  {selectedTitanLegion?.allegiance === 'loyalist' || selectedTitanLegion?.allegiance === 'traitor' ? (
+                    <Text variant="bodySmall" style={styles.templateMeta}>
+                      Allegiance: {selectedTitanLegion.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from legion)
+                    </Text>
+                  ) : (
+                    <SegmentedButtons
+                      value={loyaltyFilter}
+                      onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
+                      buttons={[
+                        { value: 'loyalist', label: 'Loyalist' },
+                        { value: 'traitor', label: 'Traitor' },
+                      ]}
+                    />
+                  )}
                 </View>
 
                 {(() => {
@@ -1356,7 +1546,9 @@ const styles = StyleSheet.create({
   },
   addModal: {
     backgroundColor: colors.panel,
-    marginHorizontal: spacing.lg,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     borderRadius: radius.lg,
     padding: spacing.md,
     height: '85%',

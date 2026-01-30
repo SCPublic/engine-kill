@@ -61,6 +61,16 @@ export interface BattleScribePrincepsTraitsLoadResult {
   warnings: string[];
 }
 
+const LOYALIST_LEGIOS_PUBLICATION_ID = '3401-191e-1333-8a1d';
+const TRAITOR_LEGIOS_PUBLICATION_ID = 'bf8b-27d7-039e-5df9';
+
+function inferLegionAllegianceFromPublicationId(publicationId?: string | null): LegionTemplate['allegiance'] {
+  const pid = (publicationId ?? '').trim();
+  if (pid === LOYALIST_LEGIOS_PUBLICATION_ID) return 'loyalist';
+  if (pid === TRAITOR_LEGIOS_PUBLICATION_ID) return 'traitor';
+  return 'unknown';
+}
+
 const DEFAULT_SOURCE: BattleScribeSourceConfig = {
   baseUrl: 'https://raw.githubusercontent.com/BSData/adeptus-titanicus/master/',
   files: ['Battlegroup.cat', 'Household.cat', 'Adeptus Titanicus 2018.gst'],
@@ -1099,7 +1109,9 @@ function selectionEntryToLegionTemplate(se: XmlNode): LegionTemplate | null {
     break;
   }
 
-  return { id, name, rules, categoryKey, categoryId };
+  const allegiance = inferLegionAllegianceFromPublicationId(se.attributes.publicationId);
+
+  return { id, name, rules, categoryKey, categoryId, allegiance };
 }
 
 function selectionEntryToUpgradeTemplate(
@@ -1532,6 +1544,17 @@ export async function loadPrincepsTraitTemplatesFromBattleScribe(
     for (const lg of legioGroups) {
       if (lg.name !== 'selectionEntryGroup') continue;
 
+      const allegiance = inferLegionAllegianceFromPublicationId(lg.attributes.publicationId);
+      const groupName = (lg.attributes.name ?? '').trim();
+      const traitGroup: PrincepsTraitTemplate['traitGroup'] =
+        groupName === 'Standard'
+          ? 'standard'
+          : groupName === 'Corrupted Titan'
+            ? 'corrupted'
+            : groupName.toLowerCase().startsWith('legio ')
+              ? 'legio'
+              : 'unknown';
+
       // Attempt to extract the legion category id from the group's modifier conditions:
       // <condition scope="primary-category" ... childId="...LegioMortis categoryEntry id..." />
       let legioCategoryId: string | null = null;
@@ -1545,6 +1568,10 @@ export async function loadPrincepsTraitTemplatesFromBattleScribe(
           legioCategoryId = childId;
           break;
         }
+      }
+      // Standard / Corrupted groups are not legion-specific.
+      if (traitGroup !== 'legio') {
+        legioCategoryId = null;
       }
 
       const entriesContainers = lg.children.filter((c) => c.name === 'selectionEntries');
@@ -1570,7 +1597,7 @@ export async function loadPrincepsTraitTemplatesFromBattleScribe(
 
           if (seen.has(id)) continue;
           seen.add(id);
-          traits.push({ id, name, rules, legioCategoryId });
+          traits.push({ id, name, rules, legioCategoryId, allegiance, traitGroup });
         }
       }
     }
