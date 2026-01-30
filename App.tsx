@@ -14,7 +14,7 @@ const theme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    background: '#f5f5f5',
+    background: '#000000',
   },
 };
 
@@ -56,13 +56,15 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <PaperProvider theme={theme}>
-        <GameProvider>
-          <StatusBar style="dark" />
-          <AppNavigator />
-        </GameProvider>
-      </PaperProvider>
-    </ErrorBoundary>
+    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <ErrorBoundary>
+        <PaperProvider theme={theme}>
+          <GameProvider>
+            <StatusBar style="dark" />
+            <AppNavigator />
+          </GameProvider>
+        </PaperProvider>
+      </ErrorBoundary>
+    </View>
   );
 }

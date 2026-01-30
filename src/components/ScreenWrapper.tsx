@@ -27,15 +27,15 @@ export default function ScreenWrapper({ children, style }: ScreenWrapperProps) {
         onLoad={() => console.log('Texture overlay loaded successfully')}
       />
 
-      {/* Layer 3: Metal frame border */}
-      <ImageBackground
+      {/* Layer 3: Metal frame border (disabled) */}
+      {/* <ImageBackground
         source={require('../../assets/images/metal-frame.png')}
         style={styles.frameLayer}
         resizeMode="stretch"
         imageStyle={styles.frameImage}
         onError={(e) => console.error('Metal frame failed to load:', e.nativeEvent.error)}
         onLoad={() => console.log('Metal frame loaded successfully')}
-      />
+      /> */}
 
       {/* Layer 4: Content area */}
       <View style={styles.contentArea}>
@@ -48,6 +48,9 @@ export default function ScreenWrapper({ children, style }: ScreenWrapperProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: 800,
+    alignSelf: 'center',
     position: 'relative',
   },
 
@@ -68,6 +71,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    width: '100%',
+    height: '100%',
     opacity: 0.5, // Make texture more visible
     zIndex: 1,
   },
