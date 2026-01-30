@@ -336,7 +336,7 @@ export default function UnitEditScreen({
               placeholderTextColor={colors.textMuted}
               style={styles.titleInput}
               autoCorrect={false}
-              autoCapitalize="words"
+              autoCapitalize="characters"
               returnKeyType="done"
               blurOnSubmit
               numberOfLines={1}
@@ -349,20 +349,10 @@ export default function UnitEditScreen({
           </Text>
         </View>
 
-        {isLg ? (
-          <View style={styles.mainRowLg}>
-            <StatsPanel unit={unit} style={styles.statsPanelLg} />
-            <View style={styles.rightColumnLg}>{rightPanel}</View>
-          </View>
-        ) : (
-          <>
-            {/* Mobile-first: stack sections to avoid overlap */}
-            <View style={styles.statsSection}>
-              <StatsPanel unit={unit} style={styles.statsPanel} />
-            </View>
-            {rightPanel}
-          </>
-        )}
+        <View style={styles.statsSection}>
+          <StatsPanel unit={unit} style={styles.statsPanel} />
+        </View>
+        {rightPanel}
 
         {/* Damage Tracks - Below the main row */}
         <View style={styles.damageSection}>
@@ -499,14 +489,12 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    maxWidth: '98%', // Constrain content width to ensure borders are visible
-    alignSelf: 'center', // Center the content
   },
   header: {
     marginBottom: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 2,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#00A323',
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -517,21 +505,25 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   title: {
-    color: colors.text,
-    fontSize: fontSize.xxl,
+    color: '#9AFCAF',
+    fontSize: 32,
     fontWeight: 'bold',
+    fontFamily: 'RobotoMono_700Bold',
+    textTransform: 'uppercase',
     flex: 1,
   },
   titleInput: {
-    color: colors.text,
-    fontSize: fontSize.xxl,
+    color: '#9AFCAF',
+    fontSize: 32,
     fontWeight: 'bold',
+    fontFamily: 'RobotoMono_700Bold',
+    textTransform: 'uppercase',
     flex: 1,
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
   subtitle: {
-    color: colors.textMuted,
+    color: '#9AFCAF',
     fontSize: fontSize.md,
     marginTop: spacing.xs,
   },
@@ -548,7 +540,8 @@ const styles = StyleSheet.create({
   },
   statsPanelLg: {
     marginRight: spacing.lg,
-    flex: 0,
+    flexShrink: 0,
+    width: 350,
   },
   rightColumnLg: {
     flex: 1,

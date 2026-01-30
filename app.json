@@ -28,7 +28,8 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "publicPath": "/engine-kill/",
-      "output": "single"
+      "output": "single",
+      "backgroundColor": "#000000"
     },
     "experiments": {
       "baseUrl": "/engine-kill"
