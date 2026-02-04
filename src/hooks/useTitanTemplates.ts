@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { titanTemplates as localTitanTemplates } from '../data/titanTemplates';
 import { MissingChassisMaxData } from '../adapters/battlescribe/battlescribeAdapter';
 import { UnitTemplate } from '../models/UnitTemplate';
 import { battleScribeCache } from '../services/battleScribeCache';
@@ -66,10 +65,10 @@ export function useTitanTemplates() {
         }
       } catch (e) {
         if (cancelled) return;
-        console.warn('[BattleScribe] Failed to load all titan templates; using local templates.', e);
+        console.warn('[BattleScribe] Failed to load titan templates from data source.', e);
         setRemoteTitanTemplates(null);
         setMissingMaxData([]);
-        setWarnings(['Failed to load BattleScribe titan templates; using local templates.']);
+        setWarnings(['Failed to load titan templates from data source.']);
         setLegendTitans([]);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -81,7 +80,7 @@ export function useTitanTemplates() {
   }, [reloadToken]);
 
   const titanTemplates = useMemo(
-    () => remoteTitanTemplates ?? localTitanTemplates,
+    () => remoteTitanTemplates ?? [],
     [remoteTitanTemplates]
   );
 
@@ -116,7 +115,7 @@ export function useTitanTemplates() {
     legendTitans,
     isLoading,
     reload,
-    source: remoteTitanTemplates ? 'battlescribe' : 'local',
+    source: remoteTitanTemplates ? 'battlescribe' : 'none',
   } as const;
 }
 

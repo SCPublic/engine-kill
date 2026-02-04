@@ -32,7 +32,7 @@ From the Expo dev server: press `w` for web, `i` for iOS simulator, `a` for Andr
 - The context handles data migration for legacy units on load
 
 ### Data Flow
-1. Templates define base stats for unit types (`src/data/titanTemplates.ts`, `src/data/bannerTemplates.ts`)
+1. Titan templates are loaded from titan-data (BattleScribe XML + engine-kill JSON overrides); banners use `src/data/bannerTemplates.ts`
 2. `unitService` creates Unit instances from templates with default values
 3. `storageService` handles AsyncStorage persistence with boolean sanitization
 4. Context provides update functions that dispatch actions and save to storage

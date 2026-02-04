@@ -3,17 +3,18 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Card, Text, SegmentedButtons, TextInput } from 'react-native-paper';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useNavigation } from '@react-navigation/native';
-import { titanTemplates } from '../data/titanTemplates';
+import { useTitanTemplates } from '../hooks/useTitanTemplates';
 import { bannerTemplates } from '../data/bannerTemplates';
 import { UnitTemplate } from '../models/UnitTemplate';
 
 export default function UnitCreateScreen() {
   // Temporarily disabled: const navigation = useNavigation();
   const { addUnitFromTemplate } = useGame();
+  const { titanTemplatesPlayable } = useTitanTemplates();
   const [unitType, setUnitType] = useState<'titan' | 'banner'>('titan');
   const [customName, setCustomName] = useState('');
 
-  const templates = unitType === 'titan' ? titanTemplates : bannerTemplates;
+  const templates = unitType === 'titan' ? titanTemplatesPlayable : bannerTemplates;
 
   const handleSelectTemplate = async (template: UnitTemplate) => {
     const name = customName.trim() || template.name;

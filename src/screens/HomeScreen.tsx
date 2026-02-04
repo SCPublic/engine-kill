@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, View, StyleSheet, FlatList, SectionList, ScrollView } from 'react-native';
+import { Alert, View, StyleSheet, FlatList, SectionList, ScrollView, Platform } from 'react-native';
 import {
   Card,
   Text,
   FAB,
+  Menu,
   Portal,
   Modal,
   SegmentedButtons,
@@ -584,30 +585,66 @@ export default function HomeScreen({
             </Card>
         )}
       />
-      <FAB.Group
-        open={fabOpen}
-        visible
-        icon={fabOpen ? 'close' : 'plus'}
-        style={styles.fab}
-        fabStyle={{ backgroundColor: colors.panelAlt }}
-        color={colors.text}
-        onStateChange={({ open }) => setFabOpen(open)}
-        actions={[
-          {
-            icon: 'plus',
-            label: 'Add Unit',
-            onPress: () => {
+      {Platform.OS === 'web' ? (
+        <Menu
+          visible={fabOpen}
+          onDismiss={() => setFabOpen(false)}
+          anchor={
+            <FAB
+              icon="plus"
+              style={styles.fab}
+              fabStyle={{ backgroundColor: colors.panelAlt }}
+              color={colors.text}
+              onPress={() => setFabOpen(true)}
+              accessibilityLabel="Add"
+            />
+          }
+          anchorPosition="top"
+        >
+          <Menu.Item
+            onPress={() => {
               setAddUnitTargetManipleId(null);
               setIsAddUnitOpen(true);
+              setFabOpen(false);
+            }}
+            title="Add Unit"
+            leadingIcon="plus"
+          />
+          <Menu.Item
+            onPress={() => {
+              setIsAddManipleOpen(true);
+              setFabOpen(false);
+            }}
+            title="Add Maniple"
+            leadingIcon="account-group"
+          />
+        </Menu>
+      ) : (
+        <FAB.Group
+          open={fabOpen}
+          visible
+          icon={fabOpen ? 'close' : 'plus'}
+          style={styles.fab}
+          fabStyle={{ backgroundColor: colors.panelAlt }}
+          color={colors.text}
+          onStateChange={({ open }) => setFabOpen(open)}
+          actions={[
+            {
+              icon: 'plus',
+              label: 'Add Unit',
+              onPress: () => {
+                setAddUnitTargetManipleId(null);
+                setIsAddUnitOpen(true);
+              },
             },
-          },
-          {
-            icon: 'account-group',
-            label: 'Add Maniple',
-            onPress: () => setIsAddManipleOpen(true),
-          },
-        ]}
-      />
+            {
+              icon: 'account-group',
+              label: 'Add Maniple',
+              onPress: () => setIsAddManipleOpen(true),
+            },
+          ]}
+        />
+      )}
 
       <Portal>
         <Dialog visible={!!confirmDeleteUnitId} onDismiss={() => setConfirmDeleteUnitId(null)}>

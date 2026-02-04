@@ -1,8 +1,13 @@
 import { UnitTemplate, UnitStats } from '../../models/UnitTemplate';
-import { titanTemplates as localTitanTemplates } from '../../data/titanTemplates';
+import { DEFAULT_DATA_BASE_URL } from '../../utils/constants';
 import { childText, findAll, parseXml, XmlNode } from './xml';
 import type { WeaponTemplate } from '../../models/UnitTemplate';
-import { chassisOverridesByTemplateId } from '../../data/chassisOverrides';
+import {
+  loadTitanDataOverrides,
+  type ChassisOverrideJson,
+  type DamageTracksJson,
+  type WeaponMetadataJson,
+} from '../../services/titanDataOverrides';
 import type { ManipleTemplate } from '../../models/ManipleTemplate';
 import type { LegionTemplate } from '../../models/LegionTemplate';
 import type { UpgradeTemplate } from '../../models/UpgradeTemplate';
@@ -72,7 +77,7 @@ function inferLegionAllegianceFromPublicationId(publicationId?: string | null): 
 }
 
 const DEFAULT_SOURCE: BattleScribeSourceConfig = {
-  baseUrl: 'https://raw.githubusercontent.com/BSData/adeptus-titanicus/master/',
+  baseUrl: DEFAULT_DATA_BASE_URL,
   files: ['Battlegroup.cat', 'Household.cat', 'Adeptus Titanicus 2018.gst'],
 };
 
@@ -568,117 +573,91 @@ function overlayWeaponUiMetadata(
   });
 }
 
-type TitanOverlay = {
-  name?: string;
-  basePoints?: number;
-  characteristics: Record<string, string>;
-  voidShieldsMax?: number;
-  plasmaReactorMax?: number;
-  maxHeat?: number;
-};
-
-function mergeIntoLocalTemplates(overlays: Map<UnitTemplate['id'], TitanOverlay>): UnitTemplate[] {
-  return localTitanTemplates.map((tpl) => {
-    const overlay = overlays.get(tpl.id);
-    if (!overlay) return tpl;
-
+/** Overlay weapon UI metadata from titan-data JSON (keyed by "name|mountType" lowercase). */
+function overlayWeaponUiMetadataFromMap(
+  remoteWeapons: WeaponTemplate[],
+  metadataMap: WeaponMetadataJson
+): WeaponTemplate[] {
+  if (!metadataMap || Object.keys(metadataMap).length === 0) return remoteWeapons;
+  return remoteWeapons.map((rw) => {
+    const key = `${(rw.name || '').trim().toLowerCase()}|${rw.mountType}`;
+    const meta = metadataMap[key];
+    if (!meta) return rw;
     return {
-      ...tpl,
-      ...(overlay.name ? { name: overlay.name } : {}),
-      ...(overlay.basePoints !== undefined ? { basePoints: overlay.basePoints } : {}),
-      defaultStats: {
-        ...tpl.defaultStats,
-        voidShields: {
-          max:
-            overlay.voidShieldsMax !== undefined
-              ? overlay.voidShieldsMax
-              : tpl.defaultStats.voidShields.max,
-        },
-        ...(overlay.plasmaReactorMax !== undefined
-          ? { plasmaReactorMax: overlay.plasmaReactorMax }
-          : {}),
-        ...(overlay.maxHeat !== undefined ? { maxHeat: overlay.maxHeat } : {}),
-        stats: applyStatsOverlay(tpl.defaultStats.stats, overlay.characteristics),
-      },
+      ...rw,
+      ...(meta.disabledRollLines ? { disabledRollLines: meta.disabledRollLines } : {}),
+      ...(meta.repairRoll ? { repairRoll: meta.repairRoll } : {}),
     };
   });
 }
 
-/**
- * Fetches BattleScribe `.cat/.gst` files from BSData and overlays any parsable values onto
- * our existing `titanTemplates` (keeps damage tracks/weapons stable for now).
- */
+/** Chassis override from titan-data only (no local fallback). */
+function getChassisOverride(fromTitanData: ChassisOverrideJson | undefined): ChassisOverrideJson | undefined {
+  const hasTitanData =
+    fromTitanData &&
+    (fromTitanData.plasmaReactorMax !== undefined ||
+      fromTitanData.voidShieldsMax !== undefined ||
+      (fromTitanData.voidShieldSaves && fromTitanData.voidShieldSaves.length > 0));
+  return hasTitanData ? fromTitanData : undefined;
+}
+
+/** Apply damage tracks + criticalEffects from titan-data JSON onto a template's defaultStats. */
+function applyDamageTracksFromJson(
+  template: UnitTemplate,
+  damageTracksEntry: DamageTracksJson[string]
+): UnitTemplate['defaultStats'] {
+  if (!damageTracksEntry) return template.defaultStats;
+  const { head, body, legs } = damageTracksEntry;
+  return {
+    ...template.defaultStats,
+    damage: {
+      head: {
+        max: head.max,
+        armor: head.armor,
+        hitTable: head.hitTable,
+        modifiers: head.modifiers ?? Array(head.max).fill(null) as (number | null)[],
+      },
+      body: {
+        max: body.max,
+        armor: body.armor,
+        hitTable: body.hitTable,
+        modifiers: body.modifiers ?? Array(body.max).fill(null) as (number | null)[],
+      },
+      legs: {
+        max: legs.max,
+        armor: legs.armor,
+        hitTable: legs.hitTable,
+        modifiers: legs.modifiers ?? Array(legs.max).fill(null) as (number | null)[],
+      },
+    },
+    criticalEffects: {
+      head: head.criticalEffects ?? [],
+      body: body.criticalEffects ?? [],
+      legs: legs.criticalEffects ?? [],
+    },
+  };
+}
+
+/** Loads titan templates from BattleScribe XML + titan-data (delegates to loadAllTitanTemplatesFromBattleScribe). */
 export async function loadTitanTemplatesFromBattleScribe(
   config: Partial<BattleScribeSourceConfig> = {}
 ): Promise<BattleScribeLoadResult> {
-  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
-  const warnings: string[] = [];
-
-  const xmlStrings: string[] = [];
-  for (const file of source.files) {
-    const url = encodeURI(`${source.baseUrl}${file}`);
-    const res = await fetch(url);
-    if (!res.ok) {
-      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
-      continue;
-    }
-    xmlStrings.push(await res.text());
-  }
-
-  const overlays = new Map<UnitTemplate['id'], TitanOverlay>();
-
-  for (const xml of xmlStrings) {
-    const doc = parseXml(xml);
-    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
-
-    for (const se of selectionEntries) {
-      const name = se.attributes.name?.trim();
-      if (!name) continue;
-
-      const titanId = inferTitanIdFromName(name);
-      if (!titanId) continue;
-
-      const chars = getCharacteristicMap(se);
-      const points = parsePointsFromSelectionEntry(se);
-      const maxValues = extractChassisMaxValues(chars);
-
-      const existing = overlays.get(titanId);
-      const mergedChars = existing ? { ...existing.characteristics, ...chars } : chars;
-      overlays.set(titanId, {
-        name,
-        ...(points !== undefined ? { basePoints: points } : {}),
-        characteristics: mergedChars,
-        ...(maxValues.voidShieldsMax !== undefined ? { voidShieldsMax: maxValues.voidShieldsMax } : {}),
-        ...(maxValues.plasmaReactorMax !== undefined ? { plasmaReactorMax: maxValues.plasmaReactorMax } : {}),
-        ...(maxValues.maxHeat !== undefined ? { maxHeat: maxValues.maxHeat } : {}),
-      });
-    }
-  }
-
-  const templates = mergeIntoLocalTemplates(overlays);
-
-  // If we didn’t find any entries, surface a useful warning.
-  if (overlays.size === 0) {
-    warnings.push(
-      'No titan selection entries were recognized in fetched BattleScribe files (expected names containing: warhound/reaver/warlord/warmaster).'
-    );
-  }
-
-  return { templates, warnings };
+  const result = await loadAllTitanTemplatesFromBattleScribe(config);
+  return { templates: result.templates, warnings: result.warnings };
 }
 
 /**
- * Loads all Titan chassis we can identify from BSData and maps them into `UnitTemplate`.
- * - For known core templates (warhound/reaver/warlord/warmaster) we keep our local damage/crit tracks and overlay BSData values.
- * - For unknown titans, we create a placeholder template (enough for the app to function) and fill what we can from BSData.
- *
- * Also returns a report of which chassis are missing void/reactor/maxHeat values in BSData.
+ * Loads all Titan chassis from BattleScribe XML + titan-data overrides (engine-kill JSON).
+ * Builds UnitTemplates from placeholder + damage-tracks/chassis/weapon-metadata in titan-data; no local fallback.
+ * Returns templates, warnings, missingMaxData, and legendTitans.
  */
 export async function loadAllTitanTemplatesFromBattleScribe(
   config: Partial<BattleScribeSourceConfig> = {}
 ): Promise<BattleScribeAllTitansLoadResult> {
   const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
   const warnings: string[] = [];
+
+  const overrides = await loadTitanDataOverrides(source.baseUrl);
 
   const xmlStrings: string[] = [];
   for (const file of source.files) {
@@ -752,18 +731,16 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     }
   }
 
-  // Build final templates: merge known local ones first (stable IDs), then append the rest.
-  const localById = new Map(localTitanTemplates.map((t) => [t.id, t] as const));
-
+  // Build templates from XML + titan-data overrides only (no local template fallback).
   const templates: UnitTemplate[] = [];
   const missingMaxData: MissingChassisMaxData[] = [];
   const legendTitans: Array<{ id: string; name: string }> = [];
 
   const sorted = Array.from(chassisById.values()).sort((a, b) => a.name.localeCompare(b.name));
-  for (const c of sorted) {
-    const local = localById.get(c.id);
+  const hasWeaponMetadata = Object.keys(overrides.weaponMetadata).length > 0;
 
-    const override = chassisOverridesByTemplateId[c.id];
+  for (const c of sorted) {
+    const override = getChassisOverride(overrides.chassisOverrides[c.id]);
     const effectiveVoidShieldsMax = c.max.voidShieldsMax ?? override?.voidShieldsMax;
     const effectivePlasmaReactorMax = c.max.plasmaReactorMax ?? override?.plasmaReactorMax;
     const effectiveMaxHeat = c.max.maxHeat ?? (effectivePlasmaReactorMax !== undefined ? effectivePlasmaReactorMax : undefined);
@@ -772,65 +749,40 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     const missing: MissingChassisMaxData['missing'] = [];
     if (effectiveVoidShieldsMax === undefined) missing.push('voidShieldsMax');
     if (effectivePlasmaReactorMax === undefined) missing.push('plasmaReactorMax');
-    // maxHeat is derived from plasmaReactorMax in our model, so only mark missing if both are missing.
     if (effectiveMaxHeat === undefined && effectivePlasmaReactorMax === undefined) missing.push('maxHeat');
     if (missing.length) missingMaxData.push({ id: c.id, name: c.name, missing });
 
-    if (local) {
-      // BattleScribe is the source of truth for weapon lists + weapon stats.
-      // We only overlay any local UI-only metadata (disabled roll overlay, repair roll) by name+mount.
-      const overWeapons = c.weapons.length ? overlayWeaponUiMetadata(c.weapons, local.availableWeapons) : local.availableWeapons;
-      const hasCarapaceWeapon = c.weapons.some((w) => w.mountType === 'carapace') || local.defaultStats.hasCarapaceWeapon;
+    const base = defaultPlaceholderTitanTemplate(c.id, c.name);
+    const baseStats = overrides.damageTracks[c.id]
+      ? applyDamageTracksFromJson(base, overrides.damageTracks[c.id])
+      : base.defaultStats;
+    const overWeapons =
+      c.weapons.length > 0
+        ? hasWeaponMetadata
+          ? overlayWeaponUiMetadataFromMap(c.weapons, overrides.weaponMetadata)
+          : c.weapons
+        : [];
+    const hasCarapaceWeapon = c.weapons.some((w) => w.mountType === 'carapace');
 
-      templates.push({
-        ...local,
-        name: c.name || local.name,
-        ...(c.points !== undefined ? { basePoints: c.points } : {}),
-        defaultStats: {
-          ...local.defaultStats,
-          ...(effectiveVoidShieldsMax !== undefined ? { voidShields: { max: effectiveVoidShieldsMax } } : {}),
-          ...(effectivePlasmaReactorMax !== undefined ? { plasmaReactorMax: effectivePlasmaReactorMax } : {}),
-          ...(effectiveMaxHeat !== undefined ? { maxHeat: effectiveMaxHeat } : {}),
-          ...(effectiveVoidShieldSaves ? { voidShieldSaves: effectiveVoidShieldSaves } : {}),
-          hasCarapaceWeapon,
-          stats: applyStatsOverlay(local.defaultStats.stats, c.chars),
-        },
-        availableWeapons: overWeapons,
-      });
-    } else {
-      // Warmaster Iconoclast: use Warmaster core chassis stats/damage tracks, but Iconoclast-specific weapons.
-      const isIconoclast = (c.name || '').toLowerCase().includes('iconoclast');
-      const warmasterLocal = localById.get('warmaster');
-      const base =
-        isIconoclast && warmasterLocal
-          ? ({ ...warmasterLocal, id: c.id, name: c.name || warmasterLocal.name } as UnitTemplate)
-          : defaultPlaceholderTitanTemplate(c.id, c.name);
-
-      const iconoclastOverWeapons =
-        isIconoclast && warmasterLocal && c.weapons.length
-          ? overlayWeaponUiMetadata(c.weapons, warmasterLocal.availableWeapons)
-          : c.weapons;
-
-      templates.push({
-        ...base,
-        ...(c.points !== undefined ? { basePoints: c.points } : {}),
-        defaultStats: {
-          ...base.defaultStats,
-          voidShields: { max: effectiveVoidShieldsMax ?? base.defaultStats.voidShields.max },
-          plasmaReactorMax: effectivePlasmaReactorMax ?? base.defaultStats.plasmaReactorMax,
-          maxHeat: effectiveMaxHeat ?? base.defaultStats.maxHeat,
-          ...(effectiveVoidShieldSaves ? { voidShieldSaves: effectiveVoidShieldSaves } : {}),
-          stats: applyStatsOverlay(base.defaultStats.stats, c.chars),
-        },
-        availableWeapons: iconoclastOverWeapons,
-      });
-    }
+    templates.push({
+      ...base,
+      name: c.name || base.name,
+      ...(c.points !== undefined ? { basePoints: c.points } : {}),
+      defaultStats: {
+        ...baseStats,
+        ...(effectiveVoidShieldsMax !== undefined ? { voidShields: { max: effectiveVoidShieldsMax } } : {}),
+        ...(effectivePlasmaReactorMax !== undefined ? { plasmaReactorMax: effectivePlasmaReactorMax } : {}),
+        ...(effectiveMaxHeat !== undefined ? { maxHeat: effectiveMaxHeat } : {}),
+        ...(effectiveVoidShieldSaves ? { voidShieldSaves: effectiveVoidShieldSaves } : {}),
+        hasCarapaceWeapon,
+        stats: applyStatsOverlay(base.defaultStats.stats, c.chars),
+      },
+      availableWeapons: overWeapons,
+    });
   }
 
-  // Ensure local core titans exist even if BSData fetch fails to include them for some reason.
   if (templates.length === 0) {
-    warnings.push('No titan chassis were recognized in fetched BattleScribe files. Falling back to local titan templates only.');
-    return { templates: localTitanTemplates, warnings, missingMaxData: [], legendTitans: [] };
+    warnings.push('No titan chassis were recognized in fetched BattleScribe files.');
   }
 
   // Deduplicate by id while preserving order

@@ -1,4 +1,16 @@
 // Game rules and default values
+
+/** BSData Adeptus Titanicus repo (upstream). */
+export const BSDATA_ADEPTUS_TITANICUS_BASE_URL =
+  'https://raw.githubusercontent.com/BSData/adeptus-titanicus/master/';
+
+/** Titan-data repo (SCPublic/titan-data, branch master). */
+export const TITAN_DATA_BASE_URL =
+  'https://raw.githubusercontent.com/SCPublic/titan-data/master/';
+
+/** Data source used by the app. Change this to switch between BSData and titan-data. */
+export const DEFAULT_DATA_BASE_URL = TITAN_DATA_BASE_URL;
+
 export const STORAGE_KEYS = {
   UNITS: '@engine_kill:units',
   MANIPLES: '@engine_kill:maniples',
