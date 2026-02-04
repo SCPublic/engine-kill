@@ -185,12 +185,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const migratedUnits = validatedUnits.map(unit => {
           let needsUpdate = false;
           
-          // Add plasmaReactor if missing
+          // Add plasmaReactor if missing, or fix current < 1 (first dot always filled)
           if (!unit.plasmaReactor) {
             unit.plasmaReactor = {
-              current: 0, // Default to 0 (empty)
+              current: 1, // First dot always filled
               max: 5, // Default to 5, will be overridden by template if needed
             };
+            needsUpdate = true;
+          } else if (unit.plasmaReactor.current < 1) {
+            unit.plasmaReactor = { ...unit.plasmaReactor, current: 1 };
             needsUpdate = true;
           }
           // Add voidShieldSaves if missing
@@ -647,13 +650,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Create plasmaReactor if it doesn't exist
     if (!unit.plasmaReactor) {
       unit.plasmaReactor = {
-        current: 0,
+        current: 1,
         max: 5, // Default, will be updated from template if available
       };
     }
     
     const max = unit.plasmaReactor.max;
-    const newValue = Math.max(0, Math.min(value, max));
+    const newValue = Math.max(1, Math.min(value, max)); // First dot always filled; never allow 0
     console.log('Updating plasma reactor:', newValue, '/', max);
     const updatedUnit = {
       ...unit,

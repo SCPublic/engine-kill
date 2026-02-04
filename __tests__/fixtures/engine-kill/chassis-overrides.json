@@ -1,0 +1,17 @@
+{
+  "warhound": {
+    "plasmaReactorMax": 5,
+    "voidShieldsMax": 4,
+    "voidShieldSaves": ["3+", "4+", "4+", "X"]
+  },
+  "reaver": {
+    "plasmaReactorMax": 6,
+    "voidShieldsMax": 5,
+    "voidShieldSaves": ["3+", "3+", "4+", "4+", "X"]
+  },
+  "warlord": {
+    "plasmaReactorMax": 7,
+    "voidShieldsMax": 6,
+    "voidShieldSaves": ["3+", "3+", "3+", "4+", "4+", "X"]
+  }
+}

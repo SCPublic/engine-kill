@@ -173,15 +173,9 @@ export default function PlasmaReactorDisplay({
 
   const handleCirclePress = (index: number) => {
     if (!onHeatChange) return;
-    // Plasma reactor is special:
-    // - Normal minimum is 1 (first pip filled)
-    // - BUT tapping the rightmost filled pip clears down to 0
-    if (current > 0 && index === current - 1) {
-      onHeatChange(0);
-    } else {
-      // Set to this pip's value (minimum 1)
-      onHeatChange(Math.max(1, Math.min(index + 1, max)));
-    }
+    // Like void shields: first dot is always filled; user can only select which pip is "current".
+    // Never allow going below 1 (cannot deselect the first dot).
+    onHeatChange(Math.max(1, Math.min(index + 1, max)));
   };
 
   const getPipColor = (index: number) => {

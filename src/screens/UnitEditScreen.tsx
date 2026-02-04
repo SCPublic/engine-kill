@@ -246,7 +246,7 @@ export default function UnitEditScreen({
       <View style={styles.reactorShieldRow}>
         <View style={styles.reactorShieldContainer}>
           <PlasmaReactorDisplay
-            current={(unit.plasmaReactor?.current ?? 0)}
+            current={Math.max(1, unit.plasmaReactor?.current ?? 1)}
             max={(unit.plasmaReactor?.max ?? 5)}
             pipColors={template?.defaultStats?.plasmaReactorColors}
             onHeatChange={handleHeatChange}

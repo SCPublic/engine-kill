@@ -30,7 +30,7 @@ export const unitService = {
       heat: 0,
       maxHeat: template.defaultStats.maxHeat,
       plasmaReactor: {
-        current: 0, // Default to 0 (empty)
+        current: 1, // First dot always filled (same as void shields)
         max: template.defaultStats.plasmaReactorMax || 5,
       },
       damage: {

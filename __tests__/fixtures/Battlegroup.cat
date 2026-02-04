@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.battlescribe.net/schema/catalogSchema" name="Adeptus Titanicus - Battlegroup" revision="1">
+  <sharedSelectionEntries/>
+  <selectionEntries>
+    <selectionEntry id="reaver-id" name="Reaver Titan" type="unit">
+      <profiles>
+        <profile name="Reaver" typeName="Unit">
+          <characteristics>
+            <characteristic name="Void Shield Generators" typeId="vsg">-</characteristic>
+            <characteristic name="Reactor Track" typeId="pr">-</characteristic>
+            <characteristic name="Command" typeId="cmd">3+</characteristic>
+          </characteristics>
+        </profile>
+      </profiles>
+    </selectionEntry>
+  </selectionEntries>
+</catalog>
