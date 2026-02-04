@@ -255,7 +255,6 @@ export default function UnitEditScreen({
             shields={activeShields}
             saves={shieldSaves}
             max={shieldPipCount}
-            clickableMax={4}
             onShieldChange={handleShieldChange}
           />
         </View>

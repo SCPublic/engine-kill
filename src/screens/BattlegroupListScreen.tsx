@@ -1,11 +1,19 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, FlatList, Linking, TouchableOpacity } from 'react-native';
 import { Card, FAB as Fab, IconButton, Modal, Portal, Text, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 import { colors, radius, spacing } from '../theme/tokens';
 import { Battlegroup } from '../models/Battlegroup';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import {
+  TITAN_DATA_REPO_SLUG,
+  TITAN_DATA_GITHUB_URL,
+  TITAN_DATA_COMMITS_API_URL,
+  ENGINE_KILL_REPO_SLUG,
+  ENGINE_KILL_GITHUB_URL,
+  ENGINE_KILL_COMMITS_API_URL,
+} from '../utils/constants';
 
 const WEB_MAX_WIDTH = 960;
 
@@ -14,6 +22,39 @@ export default function BattlegroupListScreen() {
   const { titanTemplatesPlayable } = useTitanTemplates();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [dataRepoCommitSha, setDataRepoCommitSha] = useState<string | null>(null);
+  const [appRepoCommitSha, setAppRepoCommitSha] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(TITAN_DATA_COMMITS_API_URL)
+      .then((res) => res.json())
+      .then((data: { sha?: string }) => {
+        if (cancelled || !data?.sha) return;
+        setDataRepoCommitSha(data.sha);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(ENGINE_KILL_COMMITS_API_URL)
+      .then((res) => res.json())
+      .then((data: { sha?: string }) => {
+        if (cancelled || !data?.sha) return;
+        setAppRepoCommitSha(data.sha);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const dataRepoCommitShort = dataRepoCommitSha ? dataRepoCommitSha.slice(0, 7) : null;
+  const appRepoCommitShort = appRepoCommitSha ? appRepoCommitSha.slice(0, 7) : null;
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -72,6 +113,28 @@ export default function BattlegroupListScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.page}>
+        <View style={styles.dataRepoRow}>
+          <TouchableOpacity
+            style={styles.dataRepoTouchable}
+            onPress={() => Linking.openURL(TITAN_DATA_GITHUB_URL)}
+            accessibilityLabel={`Data repo: ${TITAN_DATA_REPO_SLUG}`}
+          >
+            <Text variant="bodySmall" style={styles.dataRepoText} numberOfLines={1}>
+              Data: {TITAN_DATA_REPO_SLUG}
+              {dataRepoCommitShort ? ` @ ${dataRepoCommitShort}` : ''}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.dataRepoTouchable}
+            onPress={() => Linking.openURL(ENGINE_KILL_GITHUB_URL)}
+            accessibilityLabel={`App repo: ${ENGINE_KILL_REPO_SLUG}`}
+          >
+            <Text variant="bodySmall" style={styles.dataRepoText} numberOfLines={1}>
+              App: {ENGINE_KILL_REPO_SLUG}
+              {appRepoCommitShort ? ` @ ${appRepoCommitShort}` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.header}>
           <Text variant="titleLarge" style={styles.textPrimary}>
             Battlegroups
@@ -195,6 +258,21 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: WEB_MAX_WIDTH,
     alignSelf: 'center',
+  },
+  dataRepoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: spacing.xs,
+    marginHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  dataRepoTouchable: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  dataRepoText: {
+    color: colors.textMuted,
   },
   header: {
     paddingHorizontal: spacing.lg,

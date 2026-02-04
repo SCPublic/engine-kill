@@ -4,7 +4,6 @@ import {
   Card,
   Text,
   FAB,
-  Menu,
   Portal,
   Modal,
   SegmentedButtons,
@@ -586,39 +585,27 @@ export default function HomeScreen({
         )}
       />
       {Platform.OS === 'web' ? (
-        <Menu
-          visible={fabOpen}
-          onDismiss={() => setFabOpen(false)}
-          anchor={
-            <FAB
-              icon="plus"
-              style={styles.fab}
-              fabStyle={{ backgroundColor: colors.panelAlt }}
-              color={colors.text}
-              onPress={() => setFabOpen(true)}
-              accessibilityLabel="Add"
-            />
-          }
-          anchorPosition="top"
-        >
-          <Menu.Item
+        <View style={styles.fabRowWeb}>
+          <FAB
+            icon="plus"
+            style={styles.fabWeb}
+            fabStyle={{ backgroundColor: colors.panelAlt }}
+            color={colors.text}
             onPress={() => {
               setAddUnitTargetManipleId(null);
               setIsAddUnitOpen(true);
-              setFabOpen(false);
             }}
-            title="Add Unit"
-            leadingIcon="plus"
+            accessibilityLabel="Add Unit"
           />
-          <Menu.Item
-            onPress={() => {
-              setIsAddManipleOpen(true);
-              setFabOpen(false);
-            }}
-            title="Add Maniple"
-            leadingIcon="account-group"
+          <FAB
+            icon="account-group"
+            style={styles.fabWeb}
+            fabStyle={{ backgroundColor: colors.panelAlt }}
+            color={colors.text}
+            onPress={() => setIsAddManipleOpen(true)}
+            accessibilityLabel="Add Maniple"
           />
-        </Menu>
+        </View>
       ) : (
         <FAB.Group
           open={fabOpen}
@@ -1482,6 +1469,18 @@ const styles = StyleSheet.create({
     margin: spacing.lg,
     right: 0,
     bottom: 0,
+  },
+  /** Web: two FABs side-by-side (no Menu dropdown) */
+  fabRowWeb: {
+    position: 'absolute',
+    margin: spacing.lg,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  fabWeb: {
+    margin: 0,
   },
   headerContainer: {
     paddingBottom: spacing.sm,
