@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, View, StyleSheet, FlatList, SectionList, ScrollView, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, SectionList, ScrollView, Platform } from 'react-native';
+import { showAlert } from '../utils/alert';
 import {
   Card,
   Text,
@@ -45,8 +46,6 @@ export default function HomeScreen({
     deleteUnit,
     addManipleFromTemplate,
     deleteManiple,
-    addTitanToManiple,
-    removeTitanFromManiple,
     updateManiple,
     updateUnit,
   } = useGame();
@@ -71,6 +70,7 @@ export default function HomeScreen({
   const [manageManipleId, setManageManipleId] = useState<string | null>(null);
   const [addUnitTargetManipleId, setAddUnitTargetManipleId] = useState<string | null>(null);
   const [isLegionPickerOpen, setIsLegionPickerOpen] = useState(false);
+  const [isManipleTypePickerOpen, setIsManipleTypePickerOpen] = useState(false);
   const [editTitanId, setEditTitanId] = useState<string | null>(null);
   const [isUpgradePickerOpen, setIsUpgradePickerOpen] = useState(false);
   const [isTraitPickerOpen, setIsTraitPickerOpen] = useState(false);
@@ -137,20 +137,16 @@ export default function HomeScreen({
     setConfirmDeleteManipleId(maniple.id);
   };
 
-  const showManipleValidation = (maniple: Maniple, minRequired: number, current: number) => {
-    Alert.alert(
+  const showManipleValidation = (_maniple: Maniple, minRequired: number, current: number) => {
+    showAlert(
       'Maniple needs more titans',
       `Not enough titans for this maniple.\n\nMinimum required: ${minRequired}\nCurrently assigned: ${current}`
     );
   };
 
   const handleSelectManipleTemplate = async (template: ManipleTemplate) => {
-    if (!createManipleLegionId) {
-      Alert.alert('Select a legion', 'Please select a legion before creating a maniple.');
-      return;
-    }
     const name = customManipleName.trim() || template.name;
-    await addManipleFromTemplate(template, name, createManipleLegionId);
+    await addManipleFromTemplate(template, name, createManipleLegionId ?? undefined);
     setCustomManipleName('');
     setCreateManipleLegionId(null);
     setIsAddManipleOpen(false);
@@ -235,7 +231,7 @@ export default function HomeScreen({
         .filter(Boolean)
         .some((u) => u!.id !== selectedTitan.id && !!u!.isPrincepsSeniores);
       if (otherPrinceps) {
-        Alert.alert('Only one Princeps Seniores', 'This maniple already has a Princeps Seniores.');
+        showAlert('Only one Princeps Seniores', 'This maniple already has a Princeps Seniores.');
         return;
       }
     }
@@ -272,15 +268,6 @@ export default function HomeScreen({
     const existing = selectedTitan.upgrades ?? [];
     void updateUnit({ ...selectedTitan, upgrades: existing.filter((u) => u.id !== upgradeId) });
   };
-  const canAddToManage =
-    !!manageManiple &&
-    (!manageTemplate || manageTemplate.maxTitans <= 0 || manageManiple.titanUnitIds.length < manageTemplate.maxTitans);
-  const titansInManage = useMemo(() => {
-    if (!manageManiple) return [];
-    const set = new Set(manageManiple.titanUnitIds);
-    return titanUnits.filter((u) => set.has(u.id));
-  }, [manageManiple, titanUnits]);
-
   type UnitSection = {
     key: string;
     title: string;
@@ -407,7 +394,7 @@ export default function HomeScreen({
                               accessibilityLabel={`Add titan to ${m.name}`}
                             />
                             <IconButton
-                              icon="account-cog"
+                              icon="cog-outline"
                               size={18}
                               iconColor={colors.text}
                               onPress={() => setManageManipleId(m.id)}
@@ -851,22 +838,18 @@ export default function HomeScreen({
             <IconButton icon="close" iconColor={colors.text} onPress={() => setManageManipleId(null)} />
           </View>
 
-          {!!manageTemplate && (
+          <View style={styles.legionPickerRow}>
             <Text variant="bodySmall" style={styles.templateMeta}>
-              Titans: {manageTemplate.minTitans}–{manageTemplate.maxTitans} • Allowed: {manageTemplate.allowedTitanTemplateIds.join(', ')}
+              Maniple type:
             </Text>
-          )}
-
-          {!!manageTemplate?.specialRule && (
-            <View style={{ marginTop: spacing.sm }}>
-              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
-                {manageTemplate.name}
-              </Text>
-              <Text variant="bodySmall" style={styles.manipleRule}>
-                {manageTemplate.specialRule}
-              </Text>
-            </View>
-          )}
+            <Button
+              mode="outlined"
+              onPress={() => setIsManipleTypePickerOpen(true)}
+              disabled={!manageManiple}
+            >
+              {manageTemplate?.name ?? 'Select type'}
+            </Button>
+          </View>
 
           <View style={styles.legionPickerRow}>
             <Text variant="bodySmall" style={styles.templateMeta}>
@@ -896,6 +879,17 @@ export default function HomeScreen({
             ) : null}
           </View>
 
+          {!!manageTemplate?.specialRule && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                {manageTemplate.name}
+              </Text>
+              <Text variant="bodySmall" style={styles.manipleRule}>
+                {manageTemplate.specialRule}
+              </Text>
+            </View>
+          )}
+
           {!!manageLegion && manageLegion.rules.length > 0 ? (
             <View style={{ marginTop: 8 }}>
               {manageLegion.rules.map((r, idx) => (
@@ -905,53 +899,57 @@ export default function HomeScreen({
               ))}
             </View>
           ) : null}
+        </Modal>
 
-          {/* Intentionally no "Create Titan" button here.
-              Maniple management should only manage the roster, not create new units. */}
-
-          {manageManiple &&
-          manageTemplate &&
-          manageTemplate.maxTitans > 0 &&
-          manageManiple.titanUnitIds.length >= manageTemplate.maxTitans ? (
-            <Text variant="bodySmall" style={styles.sectionEmpty}>
-              This maniple is at max capacity.
+        <Modal
+          visible={isManipleTypePickerOpen}
+          onDismiss={() => setIsManipleTypePickerOpen(false)}
+          contentContainerStyle={styles.addModal}
+        >
+          <View style={styles.addHeaderRow}>
+            <Text variant="titleLarge" style={styles.addTitle}>
+              Select Maniple Type
             </Text>
-          ) : null}
-
+            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsManipleTypePickerOpen(false)} />
+          </View>
           <View style={styles.templateListContainer}>
-            <FlatList<Unit>
-              data={titansInManage}
-              keyExtractor={(u) => u.id}
-              style={styles.addScroll}
-              contentContainerStyle={styles.addScrollContent}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item: unit }) => {
-                if (!manageManiple) return null;
-
-                return (
-                  <Card style={styles.templateCard}>
+            {isManiplesLoading ? (
+              <Text variant="bodySmall" style={styles.sectionEmpty}>
+                Loading maniples from BattleScribe…
+              </Text>
+            ) : manipleTemplates.length === 0 ? (
+              <Text variant="bodySmall" style={styles.sectionEmpty}>
+                No maniples found in BattleScribe data.
+              </Text>
+            ) : (
+              <FlatList<ManipleTemplate>
+                data={manipleTemplates}
+                keyExtractor={(t) => t.id}
+                style={styles.addScroll}
+                contentContainerStyle={styles.addScrollContent}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item: template }) => (
+                  <Card
+                    style={styles.templateCard}
+                    onPress={() => {
+                      if (!manageManiple) return;
+                      void updateManiple({ ...manageManiple, templateId: template.id });
+                      setIsManipleTypePickerOpen(false);
+                    }}
+                  >
                     <Card.Content>
-                      <Text variant="titleMedium" numberOfLines={1}>
-                        {unit.name}
-                      </Text>
+                      <Text variant="titleLarge" style={styles.textPrimary}>{template.name}</Text>
                       <Text variant="bodySmall" style={styles.templateMeta}>
-                        Titan
+                        Titans: {template.minTitans}–{template.maxTitans > 0 ? template.maxTitans : '—'}
                       </Text>
-                      <View style={styles.manageButtonsRow}>
-                        <Button mode="outlined" onPress={() => removeTitanFromManiple(manageManiple.id, unit.id)}>
-                          Remove
-                        </Button>
-                      </View>
+                      <Text variant="bodySmall" style={styles.manipleRule}>
+                        {template.specialRule}
+                      </Text>
                     </Card.Content>
                   </Card>
-                );
-              }}
-              ListEmptyComponent={
-                <Text variant="bodySmall" style={styles.sectionEmpty}>
-                  No titans in this maniple yet.
-                </Text>
-              }
-            />
+                )}
+              />
+            )}
           </View>
         </Modal>
 
@@ -1066,7 +1064,7 @@ export default function HomeScreen({
                   </Text>
                 ))}
 
-              {selectedTitan?.isPrincepsSeniores ? (
+              {selectedTitan?.isPrincepsSeniores && selectedTitanLegion ? (
                 <View style={{ marginTop: spacing.sm }}>
                   <Text variant="bodySmall" style={styles.ruleSectionTitle}>
                     Personal Trait
@@ -1074,7 +1072,7 @@ export default function HomeScreen({
                   <Button
                     mode="outlined"
                     onPress={() => setIsTraitPickerOpen(true)}
-                    disabled={!selectedTitanLegion && princepsTraitTemplates.length === 0}
+                    disabled={princepsTraitTemplates.length === 0}
                   >
                     {selectedTitan?.princepsTrait ? 'Change trait' : 'Select trait'}
                   </Button>
@@ -1097,6 +1095,10 @@ export default function HomeScreen({
                     </Text>
                   )}
                 </View>
+              ) : selectedTitan?.isPrincepsSeniores && !selectedTitanLegion ? (
+                <Text variant="bodySmall" style={[styles.sectionEmpty, { marginTop: spacing.sm }]}>
+                  Select a legion on the maniple to choose a personal trait.
+                </Text>
               ) : null}
 
               <Text variant="bodySmall" style={[styles.templateMeta, { marginTop: spacing.sm }]}>
@@ -1316,22 +1318,28 @@ export default function HomeScreen({
               </Text>
             ) : (
               <View style={{ flex: 1 }}>
-                <View style={{ marginBottom: spacing.sm }}>
-                  {selectedTitanLegion?.allegiance === 'loyalist' || selectedTitanLegion?.allegiance === 'traitor' ? (
-                    <Text variant="bodySmall" style={styles.templateMeta}>
-                      Allegiance: {selectedTitanLegion.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from legion)
-                    </Text>
-                  ) : (
-                    <SegmentedButtons
-                      value={loyaltyFilter}
-                      onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
-                      buttons={[
-                        { value: 'loyalist', label: 'Loyalist' },
-                        { value: 'traitor', label: 'Traitor' },
-                      ]}
-                    />
-                  )}
-                </View>
+                {selectedTitanLegion ? (
+                  <View style={{ marginBottom: spacing.sm }}>
+                    {selectedTitanLegion.allegiance === 'loyalist' || selectedTitanLegion.allegiance === 'traitor' ? (
+                      <Text variant="bodySmall" style={styles.templateMeta}>
+                        Allegiance: {selectedTitanLegion.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from legion)
+                      </Text>
+                    ) : (
+                      <SegmentedButtons
+                        value={loyaltyFilter}
+                        onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
+                        buttons={[
+                          { value: 'loyalist', label: 'Loyalist' },
+                          { value: 'traitor', label: 'Traitor' },
+                        ]}
+                      />
+                    )}
+                  </View>
+                ) : (
+                  <Text variant="bodySmall" style={[styles.templateMeta, { marginBottom: spacing.sm }]}>
+                    Select a legion on the maniple to see allegiance and legion upgrades.
+                  </Text>
+                )}
 
                 {(() => {
                   const titanTemplateId = selectedTitan?.templateId ?? null;
@@ -1340,7 +1348,9 @@ export default function HomeScreen({
                     !titanTemplateId || !(u.excludedTitanTemplateIds ?? []).includes(titanTemplateId);
                   const nonLegio = (u: (typeof upgradeTemplates)[number]) => (u.legioKeys ?? []).length === 0;
                   const universal = upgradeTemplates.filter((u) => u.sourceGroup === 'universal' && nonLegio(u) && canUseForTitan(u));
-                  const loyalty = upgradeTemplates.filter((u) => u.sourceGroup === loyaltyFilter && nonLegio(u) && canUseForTitan(u));
+                  const loyalty = selectedTitanLegion
+                    ? upgradeTemplates.filter((u) => u.sourceGroup === loyaltyFilter && nonLegio(u) && canUseForTitan(u))
+                    : [];
                   const legion = legionKey
                     ? upgradeTemplates.filter((u) => (u.legioKeys ?? []).includes(legionKey) && canUseForTitan(u))
                     : [];
@@ -1371,25 +1381,35 @@ export default function HomeScreen({
                     </Card>
                   );
 
+                  const listData = selectedTitanLegion
+                    ? [
+                        { kind: 'header' as const, title: 'Universal' },
+                        ...(standards.length
+                          ? ([{ kind: 'subheader' as const, title: 'Standards' }, ...standards.map((u) => ({ kind: 'item' as const, u }))] as const)
+                          : ([{ kind: 'subheader' as const, title: 'Standards' }] as const)),
+                        ...(universalOther.length
+                          ? ([{ kind: 'subheader' as const, title: 'Other' }, ...universalOther.map((u) => ({ kind: 'item' as const, u }))] as const)
+                          : ([] as const)),
+                        { kind: 'header' as const, title: loyaltyFilter === 'traitor' ? 'Traitor' : 'Loyalist' },
+                        ...(loyalty.length ? loyalty.map((u) => ({ kind: 'item' as const, u })) : ([{ kind: 'empty' as const, title: 'No upgrades in this section.' }] as const)),
+                        { kind: 'header' as const, title: 'Legion' },
+                        ...(legion.length
+                          ? legion.map((u) => ({ kind: 'item' as const, u }))
+                          : ([{ kind: 'empty' as const, title: 'No legion-specific upgrades found.' }] as const)),
+                      ]
+                    : [
+                        { kind: 'header' as const, title: 'Universal' },
+                        ...(standards.length
+                          ? ([{ kind: 'subheader' as const, title: 'Standards' }, ...standards.map((u) => ({ kind: 'item' as const, u }))] as const)
+                          : ([{ kind: 'subheader' as const, title: 'Standards' }] as const)),
+                        ...(universalOther.length
+                          ? ([{ kind: 'subheader' as const, title: 'Other' }, ...universalOther.map((u) => ({ kind: 'item' as const, u }))] as const)
+                          : ([] as const)),
+                      ];
+
                   return (
                     <FlatList
-                      data={[
-                        { kind: 'header', title: 'Universal' } as const,
-                        ...(standards.length
-                          ? ([{ kind: 'subheader', title: 'Standards' } as const, ...standards.map((u) => ({ kind: 'item', u } as const))] as const)
-                          : ([{ kind: 'subheader', title: 'Standards' } as const] as const)),
-                        ...(universalOther.length
-                          ? ([{ kind: 'subheader', title: 'Other' } as const, ...universalOther.map((u) => ({ kind: 'item', u } as const))] as const)
-                          : ([] as const)),
-                        { kind: 'header', title: loyaltyFilter === 'traitor' ? 'Traitor' : 'Loyalist' } as const,
-                        ...(loyalty.length ? loyalty.map((u) => ({ kind: 'item', u } as const)) : ([{ kind: 'empty', title: 'No upgrades in this section.' } as const] as const)),
-                        { kind: 'header', title: 'Legion' } as const,
-                        ...(selectedTitanLegion
-                          ? legion.length
-                            ? legion.map((u) => ({ kind: 'item', u } as const))
-                            : ([{ kind: 'empty', title: 'No legion-specific upgrades found.' } as const] as const)
-                          : ([{ kind: 'empty', title: 'Select a legion on the maniple to see legion upgrades.' } as const] as const)),
-                      ]}
+                      data={listData}
                       keyExtractor={(row, idx) => {
                         if (row.kind === 'item') return `u:${row.u.id}`;
                         if (row.kind === 'header') return `h:${row.title}:${idx}`;
