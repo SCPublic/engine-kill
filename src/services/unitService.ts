@@ -20,10 +20,7 @@ export const unitService = {
       sessionId: null,
       isLocal: true,
       voidShields: {
-        front: 1, // Start with leftmost (front) selected by default
-        left: 0,
-        right: 0,
-        rear: 0,
+        selectedIndex: 0,
         max: template.defaultStats.voidShields.max,
       },
       voidShieldSaves: template.defaultStats.voidShieldSaves || [],
@@ -69,22 +66,6 @@ export const unitService = {
       rightWeapon: null,
       ...(template.defaultStats.hasCarapaceWeapon && { carapaceWeapon: null }),
       stats: { ...template.defaultStats.stats },
-    };
-  },
-
-  // Validate and update unit values
-  updateVoidShield(
-    unit: Unit,
-    facing: 'front' | 'left' | 'right' | 'rear',
-    value: number
-  ): Unit {
-    const newValue = Math.max(0, Math.min(value, unit.voidShields.max));
-    return {
-      ...unit,
-      voidShields: {
-        ...unit.voidShields,
-        [facing]: newValue,
-      },
     };
   },
 

@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "name": "engine-kill",
+      "path": "."
+    },
+    {
+      "name": "titan-data",
+      "path": "../titan-data"
+    }
+  ],
+  "settings": {}
+}

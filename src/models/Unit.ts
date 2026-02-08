@@ -71,27 +71,24 @@ export interface Unit {
   sessionId: string | null; // null if not in a session
   isLocal: boolean; // true if stored locally, false if synced
   
-  // Void Shields
+  // Void Shields: which single pip is selected (0..N-1) and max pip count
   voidShields: {
-    front: number;
-    left: number;
-    right: number;
-    rear: number;
+    selectedIndex: number;
     max: number;
   };
-  
+
+  // Void Shield save values per pip (e.g. ["3+", "4+", "4+", "X"])
+  voidShieldSaves: string[];
+
   // Heat
   heat: number;
   maxHeat: number;
-  
+
   // Plasma Reactor heat tracking
   plasmaReactor: {
     current: number;
     max: number;
   };
-  
-  // Void Shield save values (e.g., "3+", "4+")
-  voidShieldSaves: string[];
   
   // Damage Locations with Armor and Critical Levels
   damage: {

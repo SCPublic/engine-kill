@@ -122,8 +122,6 @@ interface GameContextType {
   duplicateTitan: (unitId: string, nameOverride?: string) => Promise<{ unitId: string; attachedManipleId: string | null }>;
   updateUnit: (unit: Unit) => Promise<void>;
   deleteUnit: (unitId: string) => Promise<void>;
-  updateVoidShield: (unitId: string, facing: 'front' | 'left' | 'right' | 'rear', value: number) => Promise<void>;
-  updateVoidShieldCount: (unitId: string, activeCount: number) => Promise<void>;
   updateVoidShieldByIndex: (unitId: string, selectedIndex: number) => Promise<void>;
   updateDamage: (unitId: string, location: 'head' | 'body' | 'legs', value: number) => Promise<void>;
   updateCriticalDamage: (unitId: string, location: 'head' | 'body' | 'legs', level: 'yellow' | 'orange' | 'red' | null) => Promise<void>;
@@ -201,28 +199,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
             unit.voidShieldSaves = ['3+', '4+', '4+', 'X'];
             needsUpdate = true;
           }
-          // Reset void shields - if they're at max (old units), set to default (leftmost selected)
-          // Check if any facing is at max - if so, reset to default (front=1, others=0)
-          if (unit.voidShields.front === unit.voidShields.max || 
-              unit.voidShields.left === unit.voidShields.max ||
-              unit.voidShields.right === unit.voidShields.max) {
-            unit.voidShields = {
-              ...unit.voidShields,
-              front: 1, // Default to leftmost selected
-              left: 0,
-              right: 0,
-              rear: 0,
-            };
+          // Migrate void shields to { selectedIndex, max } from old { front, left, right, rear, max }
+          const vs = unit.voidShields as { front?: number; left?: number; right?: number; rear?: number; selectedIndex?: number; max: number };
+          const saveCount = unit.voidShieldSaves?.length ?? 4;
+          if ('front' in vs && typeof vs.front === 'number') {
+            const idx = vs.front > 0 ? 0 : (vs.left ?? 0) > 0 ? 1 : (vs.right ?? 0) > 0 ? 2 : (vs.rear ?? 0) > 0 ? 3 : 0;
+            const legacySelected = (unit as Unit & { voidShieldSelectedIndex?: number }).voidShieldSelectedIndex;
+            const selectedIndex = saveCount > 4 && legacySelected != null ? Math.max(0, Math.min(legacySelected, saveCount - 1)) : idx;
+            unit.voidShields = { selectedIndex, max: vs.max };
+            delete (unit as Unit & { voidShieldSelectedIndex?: number }).voidShieldSelectedIndex;
             needsUpdate = true;
-          }
-          // If no shields are active, default to leftmost
-          if (unit.voidShields.front === 0 && unit.voidShields.left === 0 && 
-              unit.voidShields.right === 0 && unit.voidShields.rear === 0) {
-            unit.voidShields = {
-              ...unit.voidShields,
-              front: 1, // Default to leftmost selected
-            };
-            needsUpdate = true;
+          } else {
+            const idx = typeof vs.selectedIndex === 'number' ? vs.selectedIndex : 0;
+            const maxIdx = Math.max(0, saveCount - 1);
+            const clamped = Math.max(0, Math.min(idx, maxIdx));
+            if (idx !== clamped || typeof vs.selectedIndex !== 'number') {
+              unit.voidShields = { selectedIndex: clamped, max: vs.max };
+              needsUpdate = true;
+            }
           }
           // Ensure stats have all required fields
           if (!unit.stats.command) {
@@ -515,83 +509,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateVoidShield = async (
-    unitId: string,
-    facing: 'front' | 'left' | 'right' | 'rear',
-    value: number
-  ) => {
-    const unit = state.units.find((u) => u.id === unitId);
-    if (!unit) return;
-    
-    const updatedUnit = unitService.updateVoidShield(unit, facing, value);
-    await updateUnit(updatedUnit);
-  };
-
-  const updateVoidShieldCount = async (unitId: string, activeCount: number) => {
-    const unit = state.units.find((u) => u.id === unitId);
-    if (!unit) {
-      console.error('Unit not found for void shield update:', unitId);
-      return;
-    }
-    
-    // All 4 pips can be active (including the X/red one)
-    const newCount = Math.min(activeCount, 4);
-    console.log('updateVoidShieldCount called:', { unitId, activeCount, newCount, currentShields: unit.voidShields });
-    
-    // Set facings based on desired count (each facing is 0 or 1, not max)
-    const front = newCount >= 1 ? 1 : 0;
-    const left = newCount >= 2 ? 1 : 0;
-    const right = newCount >= 3 ? 1 : 0;
-    const rear = newCount >= 4 ? 1 : 0; // 4th pip (X) can also be active
-    
-    console.log('Setting void shields:', { front, left, right, rear, newCount });
-    
-    // Update all facings in sequence
-    const updatedUnit = {
-      ...unit,
-      voidShields: {
-        ...unit.voidShields,
-        front,
-        left,
-        right,
-        rear,
-      },
-    };
-    
-    // Update state immediately
-    dispatch({ type: 'UPDATE_UNIT', payload: updatedUnit });
-    
-    // Then save
-    const allUpdatedUnits = state.units.map((u) => (u.id === unitId ? updatedUnit : u));
-    await storageService.saveUnits(allUpdatedUnits);
-  };
-
   const updateVoidShieldByIndex = async (unitId: string, selectedIndex: number) => {
     const unit = state.units.find((u) => u.id === unitId);
-    if (!unit) {
-      console.error('Unit not found for void shield update:', unitId);
-      return;
-    }
-    
-    // Only one pip can be selected at a time
-    // Map index to facing: 0=front, 1=left, 2=right, 3=rear
-    const updatedUnit = {
+    if (!unit) return;
+
+    const saveCount = unit.voidShieldSaves?.length ?? 4;
+    const clampedIndex = Math.max(0, Math.min(selectedIndex, saveCount - 1));
+
+    const updatedUnit: Unit = {
       ...unit,
       voidShields: {
         ...unit.voidShields,
-        front: selectedIndex === 0 ? 1 : 0,
-        left: selectedIndex === 1 ? 1 : 0,
-        right: selectedIndex === 2 ? 1 : 0,
-        rear: selectedIndex === 3 ? 1 : 0,
+        selectedIndex: clampedIndex,
       },
     };
-    
-    console.log('Setting void shield by index:', { selectedIndex, shields: updatedUnit.voidShields });
-    
-    // Update state immediately
+
     dispatch({ type: 'UPDATE_UNIT', payload: updatedUnit });
-    
-    // Then save
     const allUpdatedUnits = state.units.map((u) => (u.id === unitId ? updatedUnit : u));
     await storageService.saveUnits(allUpdatedUnits);
   };
@@ -810,8 +743,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
           duplicateTitan,
         updateUnit,
         deleteUnit,
-        updateVoidShield,
-        updateVoidShieldCount,
         updateVoidShieldByIndex,
         updateDamage,
         updateCriticalDamage,

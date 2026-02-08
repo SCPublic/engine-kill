@@ -182,40 +182,12 @@ export default function UnitEditScreen({
     updatePlasmaReactor(unitId, value);
   };
   
-  // Fix void shields if they're at max (migration didn't catch it)
-  useEffect(() => {
-    if (unit && (unit.voidShields.front === unit.voidShields.max || 
-                 unit.voidShields.left === unit.voidShields.max ||
-                 unit.voidShields.right === unit.voidShields.max)) {
-      console.log('Fixing void shields - resetting to default (leftmost)');
-      updateVoidShieldByIndex(unitId, 0); // Set to leftmost (index 0)
-    }
-    // If no shields are active, default to leftmost
-    if (unit && unit.voidShields.front === 0 && unit.voidShields.left === 0 && 
-        unit.voidShields.right === 0 && unit.voidShields.rear === 0) {
-      console.log('No void shields active - setting to default (leftmost)');
-      updateVoidShieldByIndex(unitId, 0); // Set to leftmost (index 0)
-    }
-  }, [unit?.id]); // Only run once per unit
-
   const selectedIndex = useMemo(() => {
     if (!unit) return 0;
-    // Find which facing has a shield, default to 0 (leftmost)
-    return unit.voidShields.front > 0
-      ? 0
-      : unit.voidShields.left > 0
-        ? 1
-        : unit.voidShields.right > 0
-          ? 2
-          : unit.voidShields.rear > 0
-            ? 3
-            : 0;
-  }, [
-    unit?.voidShields.front,
-    unit?.voidShields.left,
-    unit?.voidShields.right,
-    unit?.voidShields.rear,
-  ]);
+    const saveCount = unit.voidShieldSaves?.length ?? 4;
+    const idx = unit.voidShields.selectedIndex;
+    return Math.max(0, Math.min(idx, saveCount - 1));
+  }, [unit?.voidShields.selectedIndex, unit?.voidShieldSaves?.length]);
   
   const shieldSaves = useMemo(() => {
     const v = unit?.voidShieldSaves;

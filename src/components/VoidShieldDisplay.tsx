@@ -166,13 +166,16 @@ export default function VoidShieldDisplay({
                 onPress={isClickable ? () => handleCirclePress(index) : undefined}
                 activeOpacity={0.7}
                 disabled={!isClickable}
+                pointerEvents={isClickable ? 'auto' : 'none'}
+                hitSlop={isClickable ? { top: 6, bottom: 6, left: 6, right: 6 } : undefined}
               >
-                <View style={styles.pipStack} pointerEvents="none">
+                <View style={styles.pipStack} pointerEvents="none" collapsable={false}>
                   {/* Match PlasmaReactor pip feel: soft expanding aura + thin ring.
                       Keep it cyan “energy”, regardless of core shield strength color. */}
                   {isEnergyActive && (
                     <>
                       <Animated.View
+                        pointerEvents="none"
                         style={[
                           styles.shieldAura,
                           {
@@ -183,6 +186,7 @@ export default function VoidShieldDisplay({
                         ]}
                       />
                       <Animated.View
+                        pointerEvents="none"
                         style={[
                           styles.shieldRing,
                           {
@@ -195,6 +199,7 @@ export default function VoidShieldDisplay({
                     </>
                   )}
                   <View
+                    pointerEvents="none"
                     style={[
                       styles.pip,
                       // Active, not destroyed: filled with strength color
@@ -214,7 +219,7 @@ export default function VoidShieldDisplay({
                   />
                   {/* Optional subtle cyan tint so the “white-ish” core still reads as cyan */}
                   {isEnergyActive && (
-                    <View style={[styles.shieldCoreTint, { opacity: 0.18 * glowStrength }]} />
+                    <View pointerEvents="none" style={[styles.shieldCoreTint, { opacity: 0.18 * glowStrength }]} />
                   )}
                 </View>
               </PipComponent>
