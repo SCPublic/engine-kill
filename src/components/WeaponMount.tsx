@@ -323,9 +323,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.5,
     textAlign: 'center',
-    textShadowColor: '#7a0000',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 10,
+    textShadow: '0px 1px 10px #7a0000',
     opacity: 0.92,
   },
   weaponDisabledOverlayBottom: {

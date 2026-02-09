@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Unit, UnitUpgrade, PrincepsTrait } from '../models/Unit';
 import { Maniple } from '../models/Maniple';
-import { Battlegroup } from '../models/Battlegroup';
+import { Battlegroup, BattlegroupAllegiance } from '../models/Battlegroup';
 import { STORAGE_KEYS } from '../utils/constants';
 
 function parseBooleanLike(value: unknown, defaultValue: boolean): boolean {
@@ -138,12 +138,13 @@ export const storageService = {
       if (!jsonValue) return [];
       const battlegroups = JSON.parse(jsonValue);
       return (Array.isArray(battlegroups) ? battlegroups : [])
-        .map((bg: any) => ({
+        .map((bg: any): Battlegroup => ({
           id: String(bg.id ?? ''),
           name: String(bg.name ?? '').trim(),
+          allegiance: (bg.allegiance === 'traitor' ? 'traitor' : 'loyalist') as BattlegroupAllegiance,
           createdAt: typeof bg.createdAt === 'number' ? bg.createdAt : Date.now(),
         }))
-        .filter((bg: Battlegroup) => !!bg.id && !!bg.name);
+        .filter((bg) => !!bg.id && !!bg.name);
     } catch (error) {
       console.error('Error loading battlegroups:', error);
       return [];

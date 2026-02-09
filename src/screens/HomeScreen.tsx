@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, SectionList, ScrollView, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, ScrollView, Platform } from 'react-native';
+import DraggableFlatList, {
+  NestableScrollContainer,
+  NestableDraggableFlatList,
+} from 'react-native-draggable-flatlist';
 import { showAlert } from '../utils/alert';
 import {
   Card,
@@ -16,6 +20,7 @@ import {
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../theme/tokens';
+import { sortTemplatesByScale } from '../utils/titanScaleOrder';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useNavigation } from '@react-navigation/native';
 import { Unit } from '../models/Unit';
@@ -30,6 +35,9 @@ import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { usePrincepsTraitTemplates } from '../hooks/usePrincepsTraitTemplates';
 
 const WEB_MAX_WIDTH = 1100;
+
+/** Warlord-Sinister Psi Titan: loyalist only, reinforcement only (cannot be added to a maniple). */
+const SINISTER_PSI_TEMPLATE_ID = 'bs:dfeb-83af-7b26-622a';
 
 export default function HomeScreen({
   onOpenUnit,
@@ -48,8 +56,10 @@ export default function HomeScreen({
     deleteManiple,
     updateManiple,
     updateUnit,
+    updateManipleTitanOrder,
+    updateBattlegroupReinforcementOrder,
   } = useGame();
-  const { titanTemplatesPlayable, isLoading: isTitansLoading, reload: reloadTitans } = useTitanTemplates();
+  const { titanTemplatesPlayable, isLoading: isTitansLoading, reload: reloadTitans, warnings: titanWarnings } = useTitanTemplates();
   const { manipleTemplates, isLoading: isManiplesLoading, reload: reloadManiples } = useManipleTemplates();
   const { legionTemplates, isLoading: isLegionsLoading, reload: reloadLegions } = useLegionTemplates();
   const { upgradeTemplates, isLoading: isUpgradesLoading, reload: reloadUpgrades } = useUpgradeTemplates();
@@ -153,6 +163,13 @@ export default function HomeScreen({
   };
 
   const activeBattlegroupId = state.activeBattlegroupId ?? null;
+  const activeBattlegroup = useMemo(
+    () =>
+      state.activeBattlegroupId
+        ? state.battlegroups.find((bg) => bg.id === state.activeBattlegroupId)
+        : undefined,
+    [state.activeBattlegroupId, state.battlegroups]
+  );
   const battlegroupManiples = useMemo(
     () => state.maniples.filter((m) => (m.battlegroupId ?? null) === activeBattlegroupId),
     [activeBattlegroupId, state.maniples]
@@ -161,6 +178,15 @@ export default function HomeScreen({
     () => state.units.filter((u) => (u.battlegroupId ?? null) === activeBattlegroupId),
     [activeBattlegroupId, state.units]
   );
+
+  // Legions and maniples filtered by battlegroup allegiance (only show those that explicitly match).
+  const legionsForBattlegroup = useMemo(() => {
+    const alg = activeBattlegroup?.allegiance;
+    if (!alg) return legionTemplates;
+    return legionTemplates.filter((l) => l.allegiance === alg);
+  }, [legionTemplates, activeBattlegroup?.allegiance]);
+  // Maniples: show all. Allegiance on maniples reflects source publication (e.g. Titandeath, Loyalist Legios), not a hard restriction—maniples are generally available to both sides in AT.
+  const maniplesForBattlegroup = useMemo(() => manipleTemplates, [manipleTemplates]);
 
   const manageManiple = manageManipleId ? battlegroupManiples.find((m) => m.id === manageManipleId) : undefined;
   const manageTemplate = manageManiple ? manipleTemplates.find((t) => t.id === manageManiple.templateId) : undefined;
@@ -189,11 +215,7 @@ export default function HomeScreen({
     return legionTemplates.find((l) => l.id === selectedTitanManiple.legionId);
   }, [legionTemplates, selectedTitanManiple?.legionId]);
 
-  // Auto-lock upgrade allegiance to the maniple legion (when known).
-  useEffect(() => {
-    const a = selectedTitanLegion?.allegiance;
-    if (a === 'loyalist' || a === 'traitor') setLoyaltyFilter(a);
-  }, [selectedTitanLegion?.allegiance]);
+  // Wargear allegiance is determined by battlegroup; loyaltyFilter is fallback when no battlegroup.
 
   useEffect(() => {
     if (!editTitanId) {
@@ -268,34 +290,16 @@ export default function HomeScreen({
     const existing = selectedTitan.upgrades ?? [];
     void updateUnit({ ...selectedTitan, upgrades: existing.filter((u) => u.id !== upgradeId) });
   };
-  type UnitSection = {
-    key: string;
-    title: string;
-    data: Unit[];
-    kind: 'extraTitans' | 'banners';
-  };
-
-  const unitSections: UnitSection[] = useMemo(() => {
+  const orderedReinforcementUnits = useMemo(() => {
     const unassignedTitans = titanUnits.filter((u) => !assignedTitanIds.has(u.id));
-    const sections: UnitSection[] = [];
-    if (bannerUnits.length > 0) {
-      sections.push({
-        key: 'banners',
-        title: 'Banners',
-        data: bannerUnits,
-        kind: 'banners',
-      });
-    }
-    if (unassignedTitans.length > 0) {
-      sections.push({
-        key: 'extraTitans',
-        title: 'Reinforcements',
-        data: unassignedTitans,
-        kind: 'extraTitans',
-      });
-    }
-    return sections;
-  }, [assignedTitanIds, bannerUnits, titanUnits]);
+    const order = activeBattlegroup?.reinforcementOrder ?? [];
+    return order.length
+      ? [
+          ...order.map((id) => titanUnits.find((u) => u.id === id)).filter(Boolean),
+          ...unassignedTitans.filter((u) => !order.includes(u.id)),
+        ].filter((u): u is Unit => !!u)
+      : unassignedTitans;
+  }, [activeBattlegroup, assignedTitanIds, titanUnits]);
 
   if (!!state.isLoading) {
     return (
@@ -310,14 +314,16 @@ export default function HomeScreen({
     ? state.battlegroups.find((bg) => bg.id === state.activeBattlegroupId)?.name
     : undefined;
 
+  const isWeb = Platform.OS === 'web';
+  const ScrollWrapper = isWeb ? ScrollView : NestableScrollContainer;
+  const DraggableListComponent = isWeb ? DraggableFlatList : NestableDraggableFlatList;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <SectionList<Unit, UnitSection>
-        sections={unitSections}
-        keyExtractor={(u) => u.id}
+      <ScrollWrapper
         contentContainerStyle={[styles.scrollContent, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}
-        ListHeaderComponent={
-          <View style={[styles.headerContainer, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}>
+      >
+        <View style={[styles.headerContainer, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}>
             <View style={styles.sectionHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 {onBack ? (
@@ -348,6 +354,22 @@ export default function HomeScreen({
                 </View>
               </View>
             </View>
+
+            {titanWarnings.length > 0 ? (
+              <View style={styles.dataWarningsBanner}>
+                <Text variant="bodySmall" style={styles.dataWarningsTitle}>
+                  Data load warnings
+                </Text>
+                {titanWarnings.map((msg) => (
+                  <Text key={msg} variant="bodySmall" style={styles.dataWarningsText}>
+                    {msg}
+                  </Text>
+                ))}
+                <Text variant="bodySmall" style={styles.dataWarningsHint}>
+                  Use the refresh button above to retry.
+                </Text>
+              </View>
+            ) : null}
 
             {battlegroupManiples.length === 0 ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
@@ -433,53 +455,136 @@ export default function HomeScreen({
                         )}
                         {titans.length > 0 ? (
                           <View style={{ marginTop: 8 }}>
-                            {titans.map((unit) => (
-                              <Card
-                                key={unit.id}
-                                style={[styles.unitCard, { marginBottom: 8 }]}
-                                onPress={() => handleUnitPress(unit)}
-                              >
-                                <Card.Content>
-                                  <View style={styles.unitTitleRow}>
-                                    <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
-                                      {unit.name}
+                            {isWeb ? (
+                              titans.map((unit, index) => (
+                                <Card
+                                  key={unit.id}
+                                  style={[styles.unitCard, { marginBottom: 8 }]}
+                                  onPress={() => handleUnitPress(unit)}
+                                >
+                                  <Card.Content>
+                                    <View style={styles.unitTitleRow}>
+                                      <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                                        {unit.name}
+                                      </Text>
+                                      <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                                        {getTitanTotalPoints(unit)} pts
+                                      </Text>
+                                      <IconButton
+                                        icon="chevron-up"
+                                        size={18}
+                                        iconColor={colors.text}
+                                        disabled={index <= 0}
+                                        onPress={() => {
+                                          if (index <= 0) return;
+                                          const next = [...titans];
+                                          [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                                          updateManipleTitanOrder(m.id, next.map((u) => u.id));
+                                        }}
+                                        accessibilityLabel={`Move ${unit.name} up`}
+                                      />
+                                      <IconButton
+                                        icon="chevron-down"
+                                        size={18}
+                                        iconColor={colors.text}
+                                        disabled={index >= titans.length - 1}
+                                        onPress={() => {
+                                          if (index >= titans.length - 1) return;
+                                          const next = [...titans];
+                                          [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                                          updateManipleTitanOrder(m.id, next.map((u) => u.id));
+                                        }}
+                                        accessibilityLabel={`Move ${unit.name} down`}
+                                      />
+                                      <IconButton
+                                        icon="cog-outline"
+                                        size={18}
+                                        iconColor={colors.text}
+                                        onPress={() => setEditTitanId(unit.id)}
+                                        accessibilityLabel={`Edit ${unit.name}`}
+                                      />
+                                      <IconButton
+                                        icon="content-copy"
+                                        size={18}
+                                        iconColor={colors.text}
+                                        onPress={() => handleCopyTitan(unit.id)}
+                                        accessibilityLabel={`Copy ${unit.name}`}
+                                      />
+                                      <IconButton
+                                        icon="trash-can-outline"
+                                        size={18}
+                                        iconColor={colors.text}
+                                        onPress={() => handleDeleteUnit(unit)}
+                                        accessibilityLabel={`Delete ${unit.name}`}
+                                      />
+                                    </View>
+                                    <Text variant="bodySmall" style={styles.unitWeapons}>
+                                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                                        .filter((n): n is string => !!n)
+                                        .join(' • ') || '—'}
                                     </Text>
-                                    <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
-                                      {getTitanTotalPoints(unit)} pts
-                                    </Text>
-                                    <IconButton
-                                      icon="cog-outline"
-                                      size={18}
-                                      iconColor={colors.text}
-                                      onPress={() => setEditTitanId(unit.id)}
-                                      accessibilityLabel={`Edit ${unit.name}`}
-                                    />
-                                    <IconButton
-                                      icon="content-copy"
-                                      size={18}
-                                      iconColor={colors.text}
-                                      onPress={() => handleCopyTitan(unit.id)}
-                                      accessibilityLabel={`Copy ${unit.name}`}
-                                    />
-                                    <IconButton
-                                      icon="trash-can-outline"
-                                      size={18}
-                                      iconColor={colors.text}
-                                      onPress={() => handleDeleteUnit(unit)}
-                                      accessibilityLabel={`Delete ${unit.name}`}
-                                    />
-                                  </View>
-                                  <Text variant="bodySmall" style={styles.unitWeapons}>
-                                    {(() => {
-                                      const names = [unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name].filter(
-                                        (n): n is string => !!n
-                                      );
-                                      return names.length ? names.join(' • ') : '—';
-                                    })()}
-                                  </Text>
-                                </Card.Content>
-                              </Card>
-                            ))}
+                                  </Card.Content>
+                                </Card>
+                              ))
+                            ) : (
+                              <DraggableListComponent<Unit>
+                                scrollEnabled={false}
+                                data={titans}
+                                keyExtractor={(u) => u.id}
+                                onDragEnd={({ data: next }) => updateManipleTitanOrder(m.id, next.map((u) => u.id))}
+                                renderItem={({ item: unit, drag, isActive }) => (
+                                  <Card
+                                    style={[styles.unitCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
+                                    onPress={() => handleUnitPress(unit)}
+                                    onLongPress={drag}
+                                  >
+                                    <Card.Content>
+                                      <View style={styles.unitTitleRow}>
+                                        <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                                          {unit.name}
+                                        </Text>
+                                        <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                                          {getTitanTotalPoints(unit)} pts
+                                        </Text>
+                                        <IconButton
+                                          icon="drag-horizontal"
+                                          size={18}
+                                          iconColor={colors.text}
+                                          onPress={drag}
+                                          accessibilityLabel={`Reorder ${unit.name}`}
+                                        />
+                                        <IconButton
+                                          icon="cog-outline"
+                                          size={18}
+                                          iconColor={colors.text}
+                                          onPress={() => setEditTitanId(unit.id)}
+                                          accessibilityLabel={`Edit ${unit.name}`}
+                                        />
+                                        <IconButton
+                                          icon="content-copy"
+                                          size={18}
+                                          iconColor={colors.text}
+                                          onPress={() => handleCopyTitan(unit.id)}
+                                          accessibilityLabel={`Copy ${unit.name}`}
+                                        />
+                                        <IconButton
+                                          icon="trash-can-outline"
+                                          size={18}
+                                          iconColor={colors.text}
+                                          onPress={() => handleDeleteUnit(unit)}
+                                          accessibilityLabel={`Delete ${unit.name}`}
+                                        />
+                                      </View>
+                                      <Text variant="bodySmall" style={styles.unitWeapons}>
+                                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                                          .filter((n): n is string => !!n)
+                                          .join(' • ') || '—'}
+                                      </Text>
+                                    </Card.Content>
+                                  </Card>
+                                )}
+                              />
+                            )}
                           </View>
                         ) : null}
                       </Card.Content>
@@ -490,9 +595,9 @@ export default function HomeScreen({
             )}
 
             <View style={styles.sectionDivider} />
-          </View>
-        }
-        ListEmptyComponent={battlegroupManiples.length === 0 && battlegroupUnits.length === 0 ? (
+        </View>
+
+        {battlegroupManiples.length === 0 && battlegroupUnits.length === 0 ? (
           <View style={styles.emptyState}>
             <Text variant="headlineMedium" style={styles.emptyText}>
               No Units Yet
@@ -502,35 +607,30 @@ export default function HomeScreen({
             </Text>
           </View>
         ) : null}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.unitGroupHeader}>
-            <View style={styles.sectionHeaderRow}>
-              <Text variant="titleSmall" style={styles.sectionTitle}>
-                {section.title}
-              </Text>
-              <Text variant="bodySmall" style={styles.sectionMeta}>
-                {section.data.length}
-              </Text>
+
+        {bannerUnits.length > 0 ? (
+          <>
+            <View style={styles.unitGroupHeader}>
+              <View style={styles.sectionHeaderRow}>
+                <Text variant="titleSmall" style={styles.sectionTitle}>
+                  Banners
+                </Text>
+                <Text variant="bodySmall" style={styles.sectionMeta}>
+                  {bannerUnits.length}
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
-        renderItem={({ item: unit, section }) => (
-            <Card
-              key={unit.id}
-              style={styles.unitCard}
-              onPress={() => handleUnitPress(unit)}
-            >
-              <Card.Content>
-                <View style={styles.unitTitleRow}>
-                  <Text variant="titleLarge" style={styles.unitTitle} numberOfLines={1}>
-                    {unit.name}
-                  </Text>
-                  {unit.unitType === 'titan' ? (
-                    <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
-                      {getTitanTotalPoints(unit)} pts
+            {bannerUnits.map((unit) => (
+              <Card
+                key={unit.id}
+                style={styles.unitCard}
+                onPress={() => handleUnitPress(unit)}
+              >
+                <Card.Content>
+                  <View style={styles.unitTitleRow}>
+                    <Text variant="titleLarge" style={styles.unitTitle} numberOfLines={1}>
+                      {unit.name}
                     </Text>
-                  ) : null}
-                  {unit.unitType === 'titan' ? (
                     <IconButton
                       icon="cog-outline"
                       size={18}
@@ -538,39 +638,170 @@ export default function HomeScreen({
                       onPress={() => setEditTitanId(unit.id)}
                       accessibilityLabel={`Edit ${unit.name}`}
                     />
-                  ) : null}
-                  {unit.unitType === 'titan' ? (
                     <IconButton
-                      icon="content-copy"
+                      icon="trash-can-outline"
                       size={18}
                       iconColor={colors.text}
-                      onPress={() => handleCopyTitan(unit.id)}
-                      accessibilityLabel={`Copy ${unit.name}`}
+                      onPress={() => handleDeleteUnit(unit)}
+                      accessibilityLabel={`Delete ${unit.name}`}
                     />
-                  ) : null}
-                  <IconButton
-                    icon="trash-can-outline"
-                    size={18}
-                    iconColor={colors.text}
-                    onPress={() => handleDeleteUnit(unit)}
-                    accessibilityLabel={`Delete ${unit.name}`}
-                  />
-                </View>
-                {unit.unitType === 'banner' ? <Text variant="bodyMedium" style={styles.textMuted}>Banner</Text> : null}
-                {unit.unitType === 'titan' ? (
-                  <Text variant="bodySmall" style={styles.unitWeapons}>
-                    {(() => {
-                      const names = [unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name].filter(
-                        (n): n is string => !!n
-                      );
-                      return names.length ? names.join(' • ') : '—';
-                    })()}
-                  </Text>
-                ) : null}
-              </Card.Content>
-            </Card>
-        )}
-      />
+                  </View>
+                  <Text variant="bodyMedium" style={styles.textMuted}>Banner</Text>
+                </Card.Content>
+              </Card>
+            ))}
+          </>
+        ) : null}
+
+        {orderedReinforcementUnits.length > 0 ? (
+          <>
+            <View style={styles.unitGroupHeader}>
+              <View style={styles.sectionHeaderRow}>
+                <Text variant="titleSmall" style={styles.sectionTitle}>
+                  Reinforcements
+                </Text>
+                <Text variant="bodySmall" style={styles.sectionMeta}>
+                  {orderedReinforcementUnits.length}
+                </Text>
+              </View>
+            </View>
+            {isWeb ? (
+              orderedReinforcementUnits.map((unit, index) => (
+                <Card
+                  key={unit.id}
+                  style={[styles.unitCard, { marginBottom: 8 }]}
+                  onPress={() => handleUnitPress(unit)}
+                >
+                  <Card.Content>
+                    <View style={styles.unitTitleRow}>
+                      <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                        {unit.name}
+                      </Text>
+                      <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                        {getTitanTotalPoints(unit)} pts
+                      </Text>
+                      <IconButton
+                        icon="chevron-up"
+                        size={18}
+                        iconColor={colors.text}
+                        disabled={index <= 0}
+                        onPress={() => {
+                          if (index <= 0 || !state.activeBattlegroupId) return;
+                          const next = [...orderedReinforcementUnits];
+                          [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                          updateBattlegroupReinforcementOrder(state.activeBattlegroupId, next.map((u) => u.id));
+                        }}
+                        accessibilityLabel={`Move ${unit.name} up`}
+                      />
+                      <IconButton
+                        icon="chevron-down"
+                        size={18}
+                        iconColor={colors.text}
+                        disabled={index >= orderedReinforcementUnits.length - 1}
+                        onPress={() => {
+                          if (index >= orderedReinforcementUnits.length - 1 || !state.activeBattlegroupId) return;
+                          const next = [...orderedReinforcementUnits];
+                          [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                          updateBattlegroupReinforcementOrder(state.activeBattlegroupId, next.map((u) => u.id));
+                        }}
+                        accessibilityLabel={`Move ${unit.name} down`}
+                      />
+                      <IconButton
+                        icon="cog-outline"
+                        size={18}
+                        iconColor={colors.text}
+                        onPress={() => setEditTitanId(unit.id)}
+                        accessibilityLabel={`Edit ${unit.name}`}
+                      />
+                      <IconButton
+                        icon="content-copy"
+                        size={18}
+                        iconColor={colors.text}
+                        onPress={() => handleCopyTitan(unit.id)}
+                        accessibilityLabel={`Copy ${unit.name}`}
+                      />
+                      <IconButton
+                        icon="trash-can-outline"
+                        size={18}
+                        iconColor={colors.text}
+                        onPress={() => handleDeleteUnit(unit)}
+                        accessibilityLabel={`Delete ${unit.name}`}
+                      />
+                    </View>
+                    <Text variant="bodySmall" style={styles.unitWeapons}>
+                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                        .filter((n): n is string => !!n)
+                        .join(' • ') || '—'}
+                    </Text>
+                  </Card.Content>
+                </Card>
+              ))
+            ) : (
+              <DraggableListComponent<Unit>
+                scrollEnabled={false}
+                data={orderedReinforcementUnits}
+                keyExtractor={(u) => u.id}
+                onDragEnd={({ data: next }) => {
+                  if (state.activeBattlegroupId) {
+                    updateBattlegroupReinforcementOrder(state.activeBattlegroupId, next.map((u) => u.id));
+                  }
+                }}
+                renderItem={({ item: unit, drag, isActive }) => (
+                  <Card
+                    style={[styles.unitCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
+                    onPress={() => handleUnitPress(unit)}
+                    onLongPress={drag}
+                  >
+                    <Card.Content>
+                      <View style={styles.unitTitleRow}>
+                        <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                          {unit.name}
+                        </Text>
+                        <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                          {getTitanTotalPoints(unit)} pts
+                        </Text>
+                        <IconButton
+                          icon="drag-horizontal"
+                          size={18}
+                          iconColor={colors.text}
+                          onPress={drag}
+                          accessibilityLabel={`Reorder ${unit.name}`}
+                        />
+                        <IconButton
+                          icon="cog-outline"
+                          size={18}
+                          iconColor={colors.text}
+                          onPress={() => setEditTitanId(unit.id)}
+                          accessibilityLabel={`Edit ${unit.name}`}
+                        />
+                        <IconButton
+                          icon="content-copy"
+                          size={18}
+                          iconColor={colors.text}
+                          onPress={() => handleCopyTitan(unit.id)}
+                          accessibilityLabel={`Copy ${unit.name}`}
+                        />
+                        <IconButton
+                          icon="trash-can-outline"
+                          size={18}
+                          iconColor={colors.text}
+                          onPress={() => handleDeleteUnit(unit)}
+                          accessibilityLabel={`Delete ${unit.name}`}
+                        />
+                      </View>
+                      <Text variant="bodySmall" style={styles.unitWeapons}>
+                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                          .filter((n): n is string => !!n)
+                          .join(' • ') || '—'}
+                      </Text>
+                    </Card.Content>
+                  </Card>
+                )}
+              />
+            )}
+          </>
+        ) : null}
+      </ScrollWrapper>
       {Platform.OS === 'web' ? (
         <View style={styles.fabRowWeb}>
           <FAB
@@ -716,13 +947,22 @@ export default function HomeScreen({
             <FlatList<UnitTemplate>
               data={
                 addUnitTargetManipleId
-                  ? titanTemplatesPlayable.filter((t) => {
-          const m = battlegroupManiples.find((x) => x.id === addUnitTargetManipleId);
-                      const mt = m ? manipleTemplates.find((x) => x.id === m.templateId) : undefined;
-                      // Enforce allowed chassis for this maniple.
-                      return mt ? mt.allowedTitanTemplateIds.includes(t.id) : true;
-                    })
-                  : templates
+                  ? sortTemplatesByScale(
+                      titanTemplatesPlayable.filter((t) => {
+                        if (t.id === SINISTER_PSI_TEMPLATE_ID) return false;
+                        const m = battlegroupManiples.find((x) => x.id === addUnitTargetManipleId);
+                        const mt = m ? manipleTemplates.find((x) => x.id === m.templateId) : undefined;
+                        return mt ? mt.allowedTitanTemplateIds.includes(t.id) : true;
+                      })
+                    )
+                  : unitType === 'titan'
+                    ? sortTemplatesByScale(
+                        titanTemplatesPlayable.filter((t) => {
+                          if (t.id !== SINISTER_PSI_TEMPLATE_ID) return true;
+                          return activeBattlegroup?.allegiance === 'loyalist';
+                        })
+                      )
+                    : templates
               }
               keyExtractor={(t) => t.id}
               style={styles.addScroll}
@@ -797,13 +1037,15 @@ export default function HomeScreen({
               <Text variant="bodySmall" style={styles.sectionEmpty}>
                 Loading maniples from BattleScribe…
               </Text>
-            ) : manipleTemplates.length === 0 ? (
+            ) : maniplesForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
-                No maniples found in BattleScribe data.
+                {manipleTemplates.length === 0
+                  ? 'No maniples found in BattleScribe data.'
+                  : "No maniples match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
               </Text>
             ) : (
               <FlatList<ManipleTemplate>
-                data={manipleTemplates}
+                data={maniplesForBattlegroup}
                 keyExtractor={(t) => t.id}
                 style={styles.addScroll}
                 contentContainerStyle={styles.addScrollContent}
@@ -917,13 +1159,15 @@ export default function HomeScreen({
               <Text variant="bodySmall" style={styles.sectionEmpty}>
                 Loading maniples from BattleScribe…
               </Text>
-            ) : manipleTemplates.length === 0 ? (
+            ) : maniplesForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
-                No maniples found in BattleScribe data.
+                {manipleTemplates.length === 0
+                  ? 'No maniples found in BattleScribe data.'
+                  : "No maniples match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
               </Text>
             ) : (
               <FlatList<ManipleTemplate>
-                data={manipleTemplates}
+                data={maniplesForBattlegroup}
                 keyExtractor={(t) => t.id}
                 style={styles.addScroll}
                 contentContainerStyle={styles.addScrollContent}
@@ -970,13 +1214,15 @@ export default function HomeScreen({
               <Text variant="bodySmall" style={styles.sectionEmpty}>
                 Loading legions from BattleScribe…
               </Text>
-            ) : legionTemplates.length === 0 ? (
+            ) : legionsForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
-                No legions found in BattleScribe data.
+                {legionTemplates.length === 0
+                  ? 'No legions found in BattleScribe data.'
+                  : "No legions match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
               </Text>
             ) : (
               <FlatList
-                data={legionTemplates}
+                data={legionsForBattlegroup}
                 keyExtractor={(l) => l.id}
                 style={styles.addScroll}
                 contentContainerStyle={styles.addScrollContent}
@@ -1318,13 +1564,16 @@ export default function HomeScreen({
               </Text>
             ) : (
               <View style={{ flex: 1 }}>
-                {selectedTitanLegion ? (
-                  <View style={{ marginBottom: spacing.sm }}>
-                    {selectedTitanLegion.allegiance === 'loyalist' || selectedTitanLegion.allegiance === 'traitor' ? (
+                <View style={{ marginBottom: spacing.sm }}>
+                  {activeBattlegroup?.allegiance === 'loyalist' || activeBattlegroup?.allegiance === 'traitor' ? (
+                    <Text variant="bodySmall" style={styles.templateMeta}>
+                      Allegiance: {activeBattlegroup.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from battlegroup)
+                    </Text>
+                  ) : (
+                    <>
                       <Text variant="bodySmall" style={styles.templateMeta}>
-                        Allegiance: {selectedTitanLegion.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from legion)
+                        Set allegiance on the battlegroup to see loyalty-specific wargear.
                       </Text>
-                    ) : (
                       <SegmentedButtons
                         value={loyaltyFilter}
                         onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
@@ -1333,26 +1582,25 @@ export default function HomeScreen({
                           { value: 'traitor', label: 'Traitor' },
                         ]}
                       />
-                    )}
-                  </View>
-                ) : (
-                  <Text variant="bodySmall" style={[styles.templateMeta, { marginBottom: spacing.sm }]}>
-                    Select a legion on the maniple to see allegiance and legion upgrades.
-                  </Text>
-                )}
+                    </>
+                  )}
+                </View>
 
                 {(() => {
-                  const titanTemplateId = selectedTitan?.templateId ?? null;
                   const legionKey = selectedTitanLegion?.categoryKey ?? null;
-                  const canUseForTitan = (u: (typeof upgradeTemplates)[number]) =>
-                    !titanTemplateId || !(u.excludedTitanTemplateIds ?? []).includes(titanTemplateId);
+                  // Show all wargear for titans; BattleScribe chassis exclusions often over-exclude, so we don't filter by excludedTitanTemplateIds here.
                   const nonLegio = (u: (typeof upgradeTemplates)[number]) => (u.legioKeys ?? []).length === 0;
-                  const universal = upgradeTemplates.filter((u) => u.sourceGroup === 'universal' && nonLegio(u) && canUseForTitan(u));
-                  const loyalty = selectedTitanLegion
-                    ? upgradeTemplates.filter((u) => u.sourceGroup === loyaltyFilter && nonLegio(u) && canUseForTitan(u))
-                    : [];
+                  const universal = upgradeTemplates.filter((u) => u.sourceGroup === 'universal' && nonLegio(u));
+                  // Battlegroup allegiance determines wargear; fallback to loyalty filter when no battlegroup
+                  const effectiveLoyalty: 'loyalist' | 'traitor' =
+                    activeBattlegroup?.allegiance === 'loyalist' || activeBattlegroup?.allegiance === 'traitor'
+                      ? activeBattlegroup.allegiance
+                      : loyaltyFilter;
+                  // Loyalty wargear (Loyalist/Traitor) from battlegroup allegiance
+                  const loyalty = upgradeTemplates.filter((u) => u.sourceGroup === effectiveLoyalty && nonLegio(u));
+                  // Legion-specific wargear (e.g. Legio Mortis) in addition to loyalty wargear
                   const legion = legionKey
-                    ? upgradeTemplates.filter((u) => (u.legioKeys ?? []).includes(legionKey) && canUseForTitan(u))
+                    ? upgradeTemplates.filter((u) => (u.legioKeys ?? []).includes(legionKey))
                     : [];
                   const isStandard = (n: string) => {
                     const ln = n.toLowerCase();
@@ -1381,31 +1629,30 @@ export default function HomeScreen({
                     </Card>
                   );
 
-                  const listData = selectedTitanLegion
-                    ? [
-                        { kind: 'header' as const, title: 'Universal' },
-                        ...(standards.length
-                          ? ([{ kind: 'subheader' as const, title: 'Standards' }, ...standards.map((u) => ({ kind: 'item' as const, u }))] as const)
-                          : ([{ kind: 'subheader' as const, title: 'Standards' }] as const)),
-                        ...(universalOther.length
-                          ? ([{ kind: 'subheader' as const, title: 'Other' }, ...universalOther.map((u) => ({ kind: 'item' as const, u }))] as const)
-                          : ([] as const)),
-                        { kind: 'header' as const, title: loyaltyFilter === 'traitor' ? 'Traitor' : 'Loyalist' },
-                        ...(loyalty.length ? loyalty.map((u) => ({ kind: 'item' as const, u })) : ([{ kind: 'empty' as const, title: 'No upgrades in this section.' }] as const)),
-                        { kind: 'header' as const, title: 'Legion' },
-                        ...(legion.length
-                          ? legion.map((u) => ({ kind: 'item' as const, u }))
-                          : ([{ kind: 'empty' as const, title: 'No legion-specific upgrades found.' }] as const)),
-                      ]
-                    : [
-                        { kind: 'header' as const, title: 'Universal' },
-                        ...(standards.length
-                          ? ([{ kind: 'subheader' as const, title: 'Standards' }, ...standards.map((u) => ({ kind: 'item' as const, u }))] as const)
-                          : ([{ kind: 'subheader' as const, title: 'Standards' }] as const)),
-                        ...(universalOther.length
-                          ? ([{ kind: 'subheader' as const, title: 'Other' }, ...universalOther.map((u) => ({ kind: 'item' as const, u }))] as const)
-                          : ([] as const)),
-                      ];
+                  const listData: Array<
+                    | { kind: 'header'; title: string }
+                    | { kind: 'subheader'; title: string }
+                    | { kind: 'item'; u: (typeof upgradeTemplates)[number] }
+                    | { kind: 'empty'; title: string }
+                  > = [
+                    { kind: 'header' as const, title: 'Universal' },
+                    ...(standards.length
+                      ? ([{ kind: 'subheader' as const, title: 'Standards' }, ...standards.map((u) => ({ kind: 'item' as const, u }))] as const)
+                      : ([{ kind: 'subheader' as const, title: 'Standards' }] as const)),
+                    ...(universalOther.length
+                      ? ([{ kind: 'subheader' as const, title: 'Other' }, ...universalOther.map((u) => ({ kind: 'item' as const, u }))] as const)
+                      : ([] as const)),
+                    { kind: 'header' as const, title: effectiveLoyalty === 'traitor' ? 'Traitor' : 'Loyalist' },
+                    ...(loyalty.length ? loyalty.map((u) => ({ kind: 'item' as const, u })) : ([{ kind: 'empty' as const, title: 'No upgrades in this section.' }] as const)),
+                    ...(selectedTitanLegion
+                      ? [
+                          { kind: 'header' as const, title: legion.length ? `Legion (${selectedTitanLegion.name})` : 'Legion' },
+                          ...(legion.length
+                            ? legion.map((u) => ({ kind: 'item' as const, u }))
+                            : ([{ kind: 'empty' as const, title: 'No legion-specific upgrades found.' }] as const)),
+                        ]
+                      : []),
+                  ];
 
                   return (
                     <FlatList
@@ -1541,6 +1788,26 @@ const styles = StyleSheet.create({
   sectionEmpty: {
     color: colors.textMuted,
     marginBottom: spacing.sm,
+  },
+  dataWarningsBanner: {
+    backgroundColor: 'rgba(255, 152, 0, 0.15)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  dataWarningsTitle: {
+    fontFamily: 'RobotoMono_700Bold',
+    color: '#e65100',
+  },
+  dataWarningsText: {
+    color: colors.text,
+  },
+  dataWarningsHint: {
+    color: colors.textMuted,
+    marginTop: 4,
   },
   sectionDivider: {
     height: 1,

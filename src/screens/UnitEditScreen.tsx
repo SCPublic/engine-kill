@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
-import { IconButton } from 'react-native-paper';
+import { FlatList, StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
+import { Button, Card, IconButton, Modal, Text as PaperText } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useRoute, useNavigation } from '@react-navigation/native';
@@ -17,6 +17,7 @@ import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 
@@ -31,8 +32,10 @@ export default function UnitEditScreen({
   const { state, updateUnit, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updatePlasmaReactor } =
     useGame();
   const { titanTemplates } = useTitanTemplates();
-  
+  const { upgradeTemplates, isLoading: isUpgradesLoading, reload: reloadUpgrades } = useUpgradeTemplates();
+
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
+  const [isBannerUpgradePickerOpen, setIsBannerUpgradePickerOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [weaponPage, setWeaponPage] = useState(0);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
@@ -45,9 +48,10 @@ export default function UnitEditScreen({
     setNameDraft(unit.name ?? '');
   }, [unit?.id, unit?.name]);
 
-  // Find template for hit tables and critical effects
+  // Find template for armor rolls and critical effects — only use when it matches this unit's chassis
   const templates = unit?.unitType === 'titan' ? titanTemplates : bannerTemplates;
   const template = templates.find((t) => t.id === unit?.templateId);
+  const templateMatchesUnit = Boolean(template && unit && template.id === unit.templateId);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
 
   const unitManiple = useMemo(() => {
@@ -57,6 +61,14 @@ export default function UnitEditScreen({
       (m) => (m.battlegroupId ?? null) === bgId && m.titanUnitIds.includes(unit.id)
     );
   }, [state.activeBattlegroupId, state.maniples, unit?.battlegroupId, unit?.id, unit?.unitType]);
+
+  const unitBattlegroup = useMemo(() => {
+    const found = unit?.battlegroupId ? state.battlegroups.find((bg) => bg.id === unit.battlegroupId) : undefined;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UnitEditScreen.tsx:unitBattlegroup',message:'useMemo result',data:{unitBattlegroupId:unit?.battlegroupId,foundAllegiance:found?.allegiance,battlegroupCount:state.battlegroups.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+    return found;
+  }, [state.battlegroups, unit?.battlegroupId]);
 
   const totalPoints = useMemo(() => {
     if (!unit || unit.unitType !== 'titan') return 0;
@@ -175,7 +187,9 @@ export default function UnitEditScreen({
   }, [hasCarapaceWeapon, unit]);
 
   const handleDamageChange = (location: 'head' | 'body' | 'legs', value: number) => {
-    updateDamage(unitId, location, value);
+    if (!unit) return;
+    const max = template?.defaultStats?.damage?.[location]?.max ?? unit.damage[location].max;
+    updateDamage(unitId, location, Math.max(1, Math.min(value, max)));
   };
 
   const handleHeatChange = (value: number) => {
@@ -218,8 +232,8 @@ export default function UnitEditScreen({
       <View style={styles.reactorShieldRow}>
         <View style={styles.reactorShieldContainer}>
           <PlasmaReactorDisplay
-            current={Math.max(1, unit.plasmaReactor?.current ?? 1)}
-            max={(unit.plasmaReactor?.max ?? 5)}
+            current={Math.max(1, unit?.plasmaReactor?.current ?? 1)}
+            max={(unit?.plasmaReactor?.max ?? 5)}
             pipColors={template?.defaultStats?.plasmaReactorColors}
             onHeatChange={handleHeatChange}
           />
@@ -258,6 +272,26 @@ export default function UnitEditScreen({
     }
     const nextStatus = weapon.status === 'disabled' ? 'ready' : 'disabled';
     updateWeapon(unitId, mount, { ...weapon, status: nextStatus });
+  };
+
+  const addUpgradeToBanner = (upgradeId: string) => {
+    const u = unit;
+    if (!u || u.unitType !== 'banner') return;
+    const tpl = (upgradeTemplates ?? []).find((x) => x.id === upgradeId);
+    if (!tpl) return;
+    const existing = u.upgrades ?? [];
+    if (existing.some((x) => x.id === tpl.id)) return;
+    void updateUnit({
+      ...u,
+      upgrades: [...existing, { id: tpl.id, name: tpl.name, points: tpl.points, rules: tpl.rules }],
+    });
+  };
+
+  const removeUpgradeFromBanner = (upgradeId: string) => {
+    const u = unit;
+    if (!u || u.unitType !== 'banner') return;
+    const existing = u.upgrades ?? [];
+    void updateUnit({ ...u, upgrades: existing.filter((x) => x.id !== upgradeId) });
   };
 
   if (!unit) {
@@ -313,11 +347,26 @@ export default function UnitEditScreen({
               numberOfLines={1}
             />
           </View>
-          <Text style={styles.subtitle}>
+          {unit?.unitType === 'titan' && template ? (
+            <>
+              <View style={styles.chassisBar}>
+                <Text style={styles.chassisBarText}>
+                  CHASSIS: {template.name} ({unit.templateId})
+                </Text>
+              </View>
+            </>
+          ) : null}
+          <Text style={styles.subtitle} numberOfLines={3}>
             {template?.scale && template?.scaleName
-              ? `SCALE: ${template.scale} (${template.scaleName}) • ${totalPoints} POINTS`
-              : `${totalPoints} POINTS`}
+              ? `SCALE: ${template.scale} (${template.scaleName}) • `
+              : ''}
+            {totalPoints} POINTS
           </Text>
+          {unit?.unitType === 'titan' && !templateMatchesUnit ? (
+            <Text style={styles.chassisMismatchWarning}>
+              No template loaded for chassis "{unit.templateId}". Damage tracks and armour may be wrong. Refresh data on the home screen and reopen.
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.statsSection}>
@@ -325,41 +374,50 @@ export default function UnitEditScreen({
         </View>
         {rightPanel}
 
-        {/* Damage Tracks - Below the main row */}
+        {/* Damage Tracks - Use template for max (so chassis stats are correct); unit for current/criticals */}
         <View style={styles.damageSection}>
-          {template && (
+          {templateMatchesUnit && template && (
             <>
               <DamageTrack
                 location="head"
-                damage={unit.damage.head}
-                hitTable={template.defaultStats.damage.head.hitTable}
+                damage={{
+                  ...unit.damage.head,
+                  max: template.defaultStats.damage.head.max,
+                }}
+                armorRolls={template.defaultStats.damage.head.armorRolls}
                 criticalEffects={template.defaultStats.criticalEffects?.head || []}
-                modifiers={template.defaultStats.damage.head.modifiers}
+                modifiers={template.defaultStats.damage.head.modifiers ?? Array(template.defaultStats.damage.head.max).fill(null)}
                 onDamageChange={(value) => handleDamageChange('head', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'head', level)}
-                showHitTable={true}
+                showArmorRolls={true}
                 showCriticalEffects={true}
               />
               <DamageTrack
                 location="body"
-                damage={unit.damage.body}
-                hitTable={template.defaultStats.damage.body.hitTable}
+                damage={{
+                  ...unit.damage.body,
+                  max: template.defaultStats.damage.body.max,
+                }}
+                armorRolls={template.defaultStats.damage.body.armorRolls}
                 criticalEffects={template.defaultStats.criticalEffects?.body || []}
-                modifiers={template.defaultStats.damage.body.modifiers}
+                modifiers={template.defaultStats.damage.body.modifiers ?? Array(template.defaultStats.damage.body.max).fill(null)}
                 onDamageChange={(value) => handleDamageChange('body', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'body', level)}
-                showHitTable={true}
+                showArmorRolls={true}
                 showCriticalEffects={true}
               />
               <DamageTrack
                 location="legs"
-                damage={unit.damage.legs}
-                hitTable={template.defaultStats.damage.legs.hitTable}
+                damage={{
+                  ...unit.damage.legs,
+                  max: template.defaultStats.damage.legs.max,
+                }}
+                armorRolls={template.defaultStats.damage.legs.armorRolls}
                 criticalEffects={template.defaultStats.criticalEffects?.legs || []}
-                modifiers={template.defaultStats.damage.legs.modifiers}
+                modifiers={template.defaultStats.damage.legs.modifiers ?? Array(template.defaultStats.damage.legs.max).fill(null)}
                 onDamageChange={(value) => handleDamageChange('legs', value)}
                 onCriticalChange={(level) => updateCriticalDamage(unitId, 'legs', level)}
-                showHitTable={true}
+                showArmorRolls={true}
                 showCriticalEffects={true}
               />
             </>
@@ -425,6 +483,51 @@ export default function UnitEditScreen({
         </View>
       )}
 
+        {/* Banner: Wargear & Upgrades */}
+        {unit.unitType === 'banner' && (
+          <View style={styles.upgradesSection}>
+            <Text style={styles.sectionTitle}>Wargear & Upgrades</Text>
+            <Button
+              mode="outlined"
+              onPress={() => setIsBannerUpgradePickerOpen(true)}
+              style={{ marginBottom: spacing.sm }}
+            >
+              Add upgrade
+            </Button>
+            {(unit.upgrades ?? []).length === 0 ? (
+              <Text style={styles.sectionEmpty}>No upgrades selected.</Text>
+            ) : (
+              (unit.upgrades ?? []).map((u) => (
+                <Card key={u.id} style={styles.upgradeCard}>
+                  <Card.Content>
+                    <View style={styles.upgradeTitleRow}>
+                      <PaperText variant="titleMedium" style={styles.textPrimary}>
+                        {u.name}
+                      </PaperText>
+                      <View style={styles.upgradeRight}>
+                        <PaperText variant="bodySmall" style={styles.textMuted}>
+                          {u.points} pts
+                        </PaperText>
+                        <IconButton
+                          icon="trash-can-outline"
+                          size={18}
+                          iconColor={colors.text}
+                          onPress={() => removeUpgradeFromBanner(u.id)}
+                        />
+                      </View>
+                    </View>
+                    {(u.rules ?? []).slice(0, 2).map((r, idx) => (
+                      <PaperText key={`${u.id}:r:${idx}`} variant="bodySmall" style={styles.ruleLine}>
+                        {r}
+                      </PaperText>
+                    ))}
+                  </Card.Content>
+                </Card>
+              ))
+            )}
+          </View>
+        )}
+
         {/* Weapon Selection Modal */}
         {template && selectedMount && (
           <WeaponSelectionModal
@@ -442,6 +545,143 @@ export default function UnitEditScreen({
               setSelectedMount(null);
             }}
           />
+        )}
+
+        {/* Banner upgrade picker modal */}
+        {unit.unitType === 'banner' && (
+          <Modal
+            visible={isBannerUpgradePickerOpen}
+            onDismiss={() => setIsBannerUpgradePickerOpen(false)}
+            contentContainerStyle={styles.bannerUpgradeModal}
+          >
+            <View style={styles.bannerUpgradeModalInner}>
+              <View style={styles.bannerUpgradeModalHeader}>
+                <PaperText variant="titleLarge" style={styles.textPrimary}>
+                  Add Upgrade
+                </PaperText>
+                <IconButton
+                  icon="close"
+                  iconColor={colors.text}
+                  onPress={() => setIsBannerUpgradePickerOpen(false)}
+                />
+              </View>
+              {(() => {
+                if (!unitBattlegroup) {
+                  return (
+                    <PaperText style={styles.sectionEmpty}>
+                      This banner is not in a battlegroup. Set allegiance on the battlegroup to see loyalty-specific wargear.
+                    </PaperText>
+                  );
+                }
+                if (isUpgradesLoading) {
+                  return <PaperText style={styles.sectionEmpty}>Loading upgrades…</PaperText>;
+                }
+                const templates = upgradeTemplates ?? [];
+                if (templates.length === 0) {
+                  return (
+                    <View>
+                      <PaperText style={styles.sectionEmpty}>No upgrades loaded. Wargear is loaded from BattleScribe data.</PaperText>
+                      <Button mode="outlined" onPress={() => reloadUpgrades()} style={{ marginTop: spacing.sm }}>
+                        Retry load
+                      </Button>
+                    </View>
+                  );
+                }
+                return (() => {
+                const nonLegio = (u: (typeof templates)[number]) => (u.legioKeys ?? []).length === 0;
+                const universal = templates.filter(
+                  (u) => u.sourceGroup === 'universal' && nonLegio(u)
+                );
+                const allegianceUsed = unitBattlegroup.allegiance;
+                const loyalty = templates.filter(
+                  (u) => u.sourceGroup === allegianceUsed && nonLegio(u)
+                );
+                const sourceGroupCounts = { universal: 0, loyalist: 0, traitor: 0 };
+                templates.forEach((u) => { if (u.sourceGroup === 'universal') sourceGroupCounts.universal++; else if (u.sourceGroup === 'loyalist') sourceGroupCounts.loyalist++; else if (u.sourceGroup === 'traitor') sourceGroupCounts.traitor++; });
+                const isStandard = (n: string) => {
+                  const ln = n.toLowerCase();
+                  return ln.includes('banner') || ln.includes('standard');
+                };
+                const standards = universal.filter((u) => isStandard(u.name));
+                const universalOther = universal.filter((u) => !isStandard(u.name));
+                const existingIds = new Set((unit.upgrades ?? []).map((u) => u.id));
+                const filterExisting = (list: typeof universal) => list.filter((u) => !existingIds.has(u.id));
+
+                const hasAnyWargear = universal.length > 0 || loyalty.length > 0;
+                if (!hasAnyWargear) {
+                  return (
+                    <PaperText style={styles.sectionEmpty}>
+                      No {allegianceUsed === 'traitor' ? 'traitor' : 'loyalist'} wargear loaded. Wargear is loaded from BattleScribe data.
+                    </PaperText>
+                  );
+                }
+
+                return (
+                  <FlatList
+                    data={[
+                      { kind: 'header' as const, title: 'Universal' },
+                      ...(standards.length
+                        ? [
+                            { kind: 'subheader' as const, title: 'Standards' },
+                            ...filterExisting(standards).map((u) => ({ kind: 'item' as const, u })),
+                          ]
+                        : []),
+                      ...(universalOther.length
+                        ? [
+                            { kind: 'subheader' as const, title: 'Other' },
+                            ...filterExisting(universalOther).map((u) => ({ kind: 'item' as const, u })),
+                          ]
+                        : []),
+                      { kind: 'header' as const, title: allegianceUsed === 'traitor' ? 'Traitor' : 'Loyalist' },
+                      ...filterExisting(loyalty).map((u) => ({ kind: 'item' as const, u })),
+                    ]}
+                    keyExtractor={(row, idx) => {
+                      if (row.kind === 'item') return `u:${row.u.id}`;
+                      if (row.kind === 'header') return `h:${row.title}:${idx}`;
+                      if (row.kind === 'subheader') return `sh:${row.title}:${idx}`;
+                      return `e:${idx}`;
+                    }}
+                    renderItem={({ item }) => {
+                      if (item.kind === 'header') {
+                        return (
+                          <PaperText variant="titleSmall" style={[styles.sectionTitle, { marginTop: spacing.sm }]}>
+                            {item.title}
+                          </PaperText>
+                        );
+                      }
+                      if (item.kind === 'subheader') {
+                        return (
+                          <PaperText variant="labelMedium" style={[styles.textMuted, { marginTop: spacing.xs }]}>
+                            {item.title}
+                          </PaperText>
+                        );
+                      }
+                      return (
+                        <Card
+                          key={item.u.id}
+                          style={styles.upgradeCard}
+                          onPress={() => {
+                            addUpgradeToBanner(item.u.id);
+                            setIsBannerUpgradePickerOpen(false);
+                          }}
+                        >
+                          <Card.Content>
+                            <PaperText variant="titleMedium" style={styles.textPrimary}>
+                              {item.u.name}
+                            </PaperText>
+                            <PaperText variant="bodySmall" style={styles.textMuted}>
+                              {item.u.points} pts
+                            </PaperText>
+                          </Card.Content>
+                        </Card>
+                      );
+                    }}
+                  />
+                );
+              })();
+              })()}
+            </View>
+          </Modal>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -493,9 +733,29 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
+  chassisBar: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: 'rgba(0, 80, 20, 0.6)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#009821',
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  chassisBarText: {
+    color: '#9dffb2',
+    fontSize: fontSize.sm,
+    fontFamily: 'RobotoMono_700Bold',
+  },
   subtitle: {
     color: '#9AFCAF',
     fontSize: fontSize.md,
+    marginTop: spacing.xs,
+  },
+  chassisMismatchWarning: {
+    color: '#ff9800',
+    fontSize: fontSize.sm,
     marginTop: spacing.xs,
   },
   statsSection: {
@@ -539,6 +799,22 @@ const styles = StyleSheet.create({
   },
   upgradesSection: {
     marginTop: spacing.lg,
+  },
+  bannerUpgradeModal: {
+    backgroundColor: colors.panel,
+    marginHorizontal: spacing.lg,
+    maxHeight: '80%',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  bannerUpgradeModalInner: {
+    maxHeight: 400,
+  },
+  bannerUpgradeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
     color: colors.text,

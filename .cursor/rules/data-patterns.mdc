@@ -1,0 +1,11 @@
+---
+description: Where titan data lives and how to add or change it
+globs: 
+alwaysApply: true
+---
+
+# Titan data and data source order
+
+- **All titan data lives in the titan-data repo.** Do not add or hardcode titan/chassis/weapon/damage reference data in engine-kill (no new JSON in this repo for that purpose, no large inline data in `src/`).
+- **Prefer BattleScribe XML over new JSON.** Use `Adeptus Titanicus 2018.gst` and the titan-data catalogs (e.g. `Battlegroup.cat`, `Household.cat`) as the first source. Only add or extend engine-kill JSON in titan-data when the game system/catalogs cannot express what’s needed.
+- Full conventions: see `docs/DATA_PATTERNS.md`.

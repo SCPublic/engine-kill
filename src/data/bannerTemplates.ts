@@ -10,9 +10,9 @@ export const bannerTemplates: UnitTemplate[] = [
       voidShields: { max: 1 },
       maxHeat: 4,
       damage: {
-        head: { max: 3, armor: { directHit: 2, devastatingHit: 3, crit: 4 } },
-        body: { max: 6, armor: { directHit: 3, devastatingHit: 4, crit: 5 } },
-        legs: { max: 4, armor: { directHit: 2, devastatingHit: 3, crit: 4 } },
+        head: { max: 3, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
+        body: { max: 6, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
+        legs: { max: 4, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
       },
       hasCarapaceWeapon: false,
       stats: {
@@ -49,9 +49,9 @@ export const bannerTemplates: UnitTemplate[] = [
       voidShields: { max: 1 },
       maxHeat: 5,
       damage: {
-        head: { max: 4, armor: { directHit: 2, devastatingHit: 3, crit: 4 } },
-        body: { max: 8, armor: { directHit: 3, devastatingHit: 4, crit: 5 } },
-        legs: { max: 5, armor: { directHit: 2, devastatingHit: 3, crit: 4 } },
+        head: { max: 4, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
+        body: { max: 8, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
+        legs: { max: 5, armorRolls: { direct: '—', devastating: '—', critical: '—' } },
       },
       hasCarapaceWeapon: false,
       stats: {

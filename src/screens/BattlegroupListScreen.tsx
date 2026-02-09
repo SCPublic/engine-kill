@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, FlatList, Linking, TouchableOpacity } from 'react-native';
-import { Card, FAB as Fab, IconButton, Modal, Portal, Text, TextInput } from 'react-native-paper';
+import { Card, FAB as Fab, IconButton, Modal, Portal, SegmentedButtons, Text, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 import { colors, radius, spacing } from '../theme/tokens';
-import { Battlegroup } from '../models/Battlegroup';
+import { Battlegroup, BattlegroupAllegiance } from '../models/Battlegroup';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 import {
   TITAN_DATA_REPO_SLUG,
@@ -18,10 +18,11 @@ import {
 const WEB_MAX_WIDTH = 960;
 
 export default function BattlegroupListScreen() {
-  const { state, createBattlegroup, renameBattlegroup, deleteBattlegroupById, setActiveBattlegroupId } = useGame();
+  const { state, createBattlegroup, updateBattlegroup, deleteBattlegroupById, setActiveBattlegroupId } = useGame();
   const { titanTemplatesPlayable } = useTitanTemplates();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [createAllegiance, setCreateAllegiance] = useState<BattlegroupAllegiance>('loyalist');
   const [dataRepoCommitSha, setDataRepoCommitSha] = useState<string | null>(null);
   const [appRepoCommitSha, setAppRepoCommitSha] = useState<string | null>(null);
 
@@ -59,6 +60,7 @@ export default function BattlegroupListScreen() {
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
+  const [renameAllegiance, setRenameAllegiance] = useState<BattlegroupAllegiance>('loyalist');
 
   const sorted = useMemo(() => {
     return [...state.battlegroups].sort((a, b) => b.createdAt - a.createdAt);
@@ -67,8 +69,9 @@ export default function BattlegroupListScreen() {
   const submitCreate = async () => {
     const trimmed = createName.trim();
     if (!trimmed) return;
-    await createBattlegroup(trimmed);
+    await createBattlegroup(trimmed, createAllegiance);
     setCreateName('');
+    setCreateAllegiance('loyalist');
     setIsCreateOpen(false);
   };
 
@@ -91,6 +94,7 @@ export default function BattlegroupListScreen() {
   const openRename = (battlegroup: Battlegroup) => {
     setRenameId(battlegroup.id);
     setRenameName(battlegroup.name);
+    setRenameAllegiance(battlegroup.allegiance);
     setIsRenameOpen(true);
   };
 
@@ -98,7 +102,10 @@ export default function BattlegroupListScreen() {
     if (!renameId) return;
     const trimmed = renameName.trim();
     if (!trimmed) return;
-    await renameBattlegroup(renameId, trimmed);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattlegroupListScreen.tsx:submitRename',message:'submitting',data:{renameId,renameAllegiance},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
+    await updateBattlegroup(renameId, { name: trimmed, allegiance: renameAllegiance });
     setIsRenameOpen(false);
     setRenameId(null);
     setRenameName('');
@@ -164,7 +171,7 @@ export default function BattlegroupListScreen() {
                         {item.name}
                       </Text>
                       <Text variant="bodySmall" style={styles.textMuted} numberOfLines={1}>
-                        {getBattlegroupPoints(item.id)} pts
+                        {getBattlegroupPoints(item.id)} pts · {item.allegiance === 'traitor' ? 'Traitor' : 'Loyalist'}
                       </Text>
                     </View>
                     <View style={styles.actions}>
@@ -216,6 +223,18 @@ export default function BattlegroupListScreen() {
               activeOutlineColor={colors.text}
               textColor={colors.text}
             />
+            <Text variant="labelMedium" style={[styles.textPrimary, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+              Allegiance
+            </Text>
+            <SegmentedButtons
+              value={createAllegiance}
+              onValueChange={(v) => setCreateAllegiance(v as BattlegroupAllegiance)}
+              buttons={[
+                { value: 'loyalist', label: 'Loyalist' },
+                { value: 'traitor', label: 'Traitor' },
+              ]}
+              style={styles.segmentedButtons}
+            />
             <View style={styles.modalActions}>
               <IconButton icon="check" iconColor={colors.text} onPress={submitCreate} accessibilityLabel="Create" />
             </View>
@@ -224,7 +243,7 @@ export default function BattlegroupListScreen() {
           <Modal visible={isRenameOpen} onDismiss={closeRename} contentContainerStyle={styles.modal}>
             <View style={styles.modalHeader}>
               <Text variant="titleLarge" style={styles.textPrimary}>
-                Rename battlegroup
+                Edit battlegroup
               </Text>
               <IconButton icon="close" iconColor={colors.text} onPress={closeRename} />
             </View>
@@ -238,8 +257,20 @@ export default function BattlegroupListScreen() {
               activeOutlineColor={colors.text}
               textColor={colors.text}
             />
+            <Text variant="labelMedium" style={[styles.textPrimary, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+              Allegiance
+            </Text>
+            <SegmentedButtons
+              value={renameAllegiance}
+              onValueChange={(v) => setRenameAllegiance(v as BattlegroupAllegiance)}
+              buttons={[
+                { value: 'loyalist', label: 'Loyalist' },
+                { value: 'traitor', label: 'Traitor' },
+              ]}
+              style={styles.segmentedButtons}
+            />
             <View style={styles.modalActions}>
-              <IconButton icon="check" iconColor={colors.text} onPress={submitRename} accessibilityLabel="Save name" />
+              <IconButton icon="check" iconColor={colors.text} onPress={submitRename} accessibilityLabel="Save" />
             </View>
           </Modal>
         </Portal>
@@ -327,6 +358,9 @@ const styles = StyleSheet.create({
   },
   input: {
     marginTop: spacing.md,
+  },
+  segmentedButtons: {
+    marginTop: spacing.xs,
   },
   modalActions: {
     marginTop: spacing.md,

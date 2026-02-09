@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  // Layer 1: Black background
+  // Layer 1: Black background (green + black)
   background: {
     position: 'absolute',
     top: 0,

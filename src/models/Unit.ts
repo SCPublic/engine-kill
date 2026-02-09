@@ -23,12 +23,6 @@ export interface Weapon {
   [key: string]: any;
 }
 
-export interface ArmorValues {
-  directHit: number;
-  devastatingHit: number;
-  crit: number;
-}
-
 export interface CriticalDamage {
   level: 'yellow' | 'orange' | 'red';
   effect: string; // Description of the critical effect
@@ -38,8 +32,6 @@ export interface CriticalDamage {
 export interface DamageLocation {
   current: number;
   max: number;
-  // Armor values
-  armor: ArmorValues;
   // Critical damage levels (yellow, orange, red) - each has different effects
   criticals: {
     yellow: CriticalDamage | null;

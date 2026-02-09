@@ -2,6 +2,7 @@ import React from 'react';
 import { PaperProvider, MD3DarkTheme, ActivityIndicator } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts, RobotoMono_400Regular, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 
 import { GameProvider, useGame } from './src/context/GameContext';
@@ -62,13 +63,17 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <PaperProvider theme={theme}>
-        <GameProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
-        </GameProvider>
-      </PaperProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <PaperProvider theme={theme}>
+            <GameProvider>
+              <StatusBar style="light" />
+              <AppNavigator />
+            </GameProvider>
+          </PaperProvider>
+        </View>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

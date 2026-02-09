@@ -1,3 +1,5 @@
+export type ManipleAllegiance = 'loyalist' | 'traitor' | 'unknown';
+
 export interface ManipleTemplate {
   id: string;
   name: string;
@@ -10,6 +12,8 @@ export interface ManipleTemplate {
   maxTitans: number;
   specialRule: string;
   description?: string;
+  /** Inferred from publication (e.g. Loyalist Legios vs Traitor Legios). Used to filter maniples by battlegroup allegiance. */
+  allegiance?: ManipleAllegiance;
 }
 
 

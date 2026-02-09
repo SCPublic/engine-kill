@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Unit, Weapon } from '../models/Unit';
 import { Maniple } from '../models/Maniple';
-import { Battlegroup } from '../models/Battlegroup';
+import { Battlegroup, BattlegroupAllegiance } from '../models/Battlegroup';
 import { storageService } from '../services/storageService';
 import { unitService } from '../services/unitService';
 import { UnitTemplate } from '../models/UnitTemplate';
@@ -26,6 +26,7 @@ type GameAction =
   | { type: 'SET_ACTIVE_BATTLEGROUP_ID'; payload: string | null }
   | { type: 'ADD_BATTLEGROUP'; payload: Battlegroup }
   | { type: 'RENAME_BATTLEGROUP'; payload: { id: string; name: string } }
+  | { type: 'UPDATE_BATTLEGROUP'; payload: { id: string; name?: string; allegiance?: BattlegroupAllegiance; reinforcementOrder?: string[] } }
   | { type: 'DELETE_BATTLEGROUP'; payload: string }
   | { type: 'LOAD_UNITS'; payload: Unit[] }
   | { type: 'ADD_UNIT'; payload: Unit }
@@ -64,6 +65,24 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           bg.id === action.payload.id ? { ...bg, name: action.payload.name } : bg
         ),
       };
+    case 'UPDATE_BATTLEGROUP': {
+      const { id, name, allegiance, reinforcementOrder } = action.payload;
+      const nextBattlegroups = state.battlegroups.map((bg) =>
+        bg.id === id
+          ? {
+              ...bg,
+              ...(name !== undefined && { name }),
+              ...(allegiance !== undefined && { allegiance }),
+              ...(reinforcementOrder !== undefined && { reinforcementOrder }),
+            }
+          : bg
+      );
+      const updated = nextBattlegroups.find((bg) => bg.id === id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:UPDATE_BATTLEGROUP',message:'reducer after update',data:{id,payloadAllegiance:allegiance,updatedAllegiance:updated?.allegiance,battlegroupCount:nextBattlegroups.length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      return { ...state, battlegroups: nextBattlegroups };
+    }
     case 'DELETE_BATTLEGROUP':
       return {
         ...state,
@@ -113,8 +132,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
 interface GameContextType {
   state: GameState;
-  createBattlegroup: (name: string) => Promise<Battlegroup>;
+  createBattlegroup: (name: string, allegiance: BattlegroupAllegiance) => Promise<Battlegroup>;
   renameBattlegroup: (battlegroupId: string, name: string) => Promise<void>;
+  updateBattlegroup: (battlegroupId: string, updates: { name?: string; allegiance?: BattlegroupAllegiance; reinforcementOrder?: string[] }) => Promise<void>;
+  updateManipleTitanOrder: (manipleId: string, orderedUnitIds: string[]) => Promise<void>;
+  updateBattlegroupReinforcementOrder: (battlegroupId: string, orderedUnitIds: string[]) => Promise<void>;
   deleteBattlegroupById: (battlegroupId: string) => Promise<void>;
   setActiveBattlegroupId: (battlegroupId: string | null) => Promise<void>;
   addUnitFromTemplate: (template: UnitTemplate, name?: string) => Promise<void>;
@@ -249,6 +271,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
             unit.carapaceWeapon = null;
             needsUpdate = true;
           }
+          // Strip legacy armor field (removed from model; old saves may still have it)
+          (['head', 'body', 'legs'] as const).forEach(loc => {
+            const d = unit.damage[loc] as Record<string, unknown>;
+            if ('armor' in d && d.armor !== undefined) {
+              const { armor: _a, ...rest } = d;
+              unit.damage[loc] = rest as typeof unit.damage[typeof loc];
+              needsUpdate = true;
+            }
+          });
           // Ensure critical damage applied fields are booleans, not strings
           ['head', 'body', 'legs'].forEach(location => {
             const loc = location as 'head' | 'body' | 'legs';
@@ -284,12 +315,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
           const defaultBattlegroup: Battlegroup = {
             id: `battlegroup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
             name: 'Battlegroup 1',
+            allegiance: 'loyalist',
             createdAt: Date.now(),
           };
           battlegroups = [defaultBattlegroup];
           activeBattlegroupId = defaultBattlegroup.id;
           await storageService.saveBattlegroups(battlegroups);
           await storageService.saveActiveBattlegroupId(activeBattlegroupId);
+        }
+
+        // Migration: ensure all battlegroups have allegiance (legacy data).
+        const migratedBattlegroups = battlegroups.map((bg) =>
+          bg.allegiance === undefined || (bg.allegiance !== 'loyalist' && bg.allegiance !== 'traitor')
+            ? { ...bg, allegiance: 'loyalist' as BattlegroupAllegiance }
+            : bg
+        );
+        if (migratedBattlegroups.some((bg, i) => bg !== battlegroups[i])) {
+          battlegroups = migratedBattlegroups;
+          await storageService.saveBattlegroups(battlegroups);
         }
 
         // If the stored active battlegroup is missing, fall back to first battlegroup.
@@ -352,12 +395,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await storageService.saveActiveBattlegroupId(battlegroupId);
   };
 
-  const createBattlegroup = async (name: string): Promise<Battlegroup> => {
+  const createBattlegroup = async (name: string, allegiance: BattlegroupAllegiance): Promise<Battlegroup> => {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Battlegroup name is required');
     const battlegroup: Battlegroup = {
       id: `battlegroup_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       name: trimmed,
+      allegiance,
       createdAt: Date.now(),
     };
     const next = [...state.battlegroups, battlegroup];
@@ -374,6 +418,47 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'RENAME_BATTLEGROUP', payload: { id: battlegroupId, name: trimmed } });
     const next = state.battlegroups.map((bg) => (bg.id === battlegroupId ? { ...bg, name: trimmed } : bg));
     await storageService.saveBattlegroups(next);
+  };
+
+  const updateBattlegroup = async (
+    battlegroupId: string,
+    updates: { name?: string; allegiance?: BattlegroupAllegiance; reinforcementOrder?: string[] }
+  ): Promise<void> => {
+    if (updates.name !== undefined && !updates.name.trim()) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:updateBattlegroup',message:'called with',data:{battlegroupId,updatesAllegiance:updates.allegiance},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    dispatch({ type: 'UPDATE_BATTLEGROUP', payload: { id: battlegroupId, ...updates } });
+    const next = state.battlegroups.map((bg) => {
+      if (bg.id !== battlegroupId) return bg;
+      return {
+        ...bg,
+        ...(updates.name !== undefined && { name: updates.name.trim() }),
+        ...(updates.allegiance !== undefined && { allegiance: updates.allegiance }),
+        ...(updates.reinforcementOrder !== undefined && { reinforcementOrder: updates.reinforcementOrder }),
+      };
+    });
+    const savedBg = next.find((bg) => bg.id === battlegroupId);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:updateBattlegroup',message:'next to save',data:{savedAllegiance:savedBg?.allegiance},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    await storageService.saveBattlegroups(next);
+
+    // When allegiance changes, clear legion selections on maniples and wargear on units in this battlegroup.
+    if (updates.allegiance !== undefined) {
+      const nextManiples = state.maniples.map((m) =>
+        m.battlegroupId === battlegroupId ? { ...m, legionId: null } : m
+      );
+      const nextUnits = state.units.map((u) =>
+        u.battlegroupId === battlegroupId
+          ? { ...u, upgrades: [], isPrincepsSeniores: false, princepsTrait: null }
+          : u
+      );
+      nextManiples.forEach((m) => dispatch({ type: 'UPDATE_MANIPLE', payload: m }));
+      nextUnits.forEach((u) => dispatch({ type: 'UPDATE_UNIT', payload: u }));
+      await storageService.saveManiples(nextManiples);
+      await storageService.saveUnits(nextUnits);
+    }
   };
 
   const deleteBattlegroupById = async (battlegroupId: string): Promise<void> => {
@@ -693,6 +778,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await updateManiple(updatedManiple);
   };
 
+  const updateManipleTitanOrder = async (manipleId: string, orderedUnitIds: string[]) => {
+    const maniple = state.maniples.find((m) => m.id === manipleId);
+    if (!maniple) return;
+    const updatedManiple = { ...maniple, titanUnitIds: orderedUnitIds };
+    await updateManiple(updatedManiple);
+  };
+
+  const updateBattlegroupReinforcementOrder = async (battlegroupId: string, orderedUnitIds: string[]) => {
+    await updateBattlegroup(battlegroupId, { reinforcementOrder: orderedUnitIds });
+  };
+
     // Ensure state.isLoading is always a boolean and sanitize all units
     const safeUnits = state.units.map(unit => {
       const sanitized = { ...unit };
@@ -736,6 +832,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         state: safeState,
         createBattlegroup,
         renameBattlegroup,
+        updateBattlegroup,
         deleteBattlegroupById,
         setActiveBattlegroupId,
         addUnitFromTemplate,
@@ -756,6 +853,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         deleteManiple,
         addTitanToManiple,
         removeTitanFromManiple,
+        updateManipleTitanOrder,
+        updateBattlegroupReinforcementOrder,
       }}
     >
       {children}

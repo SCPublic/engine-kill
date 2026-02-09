@@ -1,5 +1,0 @@
-{
-  "gatling blaster|arm": {
-    "disabledRollLines": ["9-12: Detonation {Body, S7}", "13+: Detonation {Body, S9}"]
-  }
-}

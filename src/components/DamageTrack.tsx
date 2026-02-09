@@ -1,30 +1,30 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated } from 'react-native';
 import { DamageLocation } from '../models/Unit';
-import { HitTable, CriticalEffect } from '../models/UnitTemplate';
+import { ArmorRolls, CriticalEffect } from '../models/UnitTemplate';
 import CriticalDamageTracker from './CriticalDamageTracker';
 
 interface DamageTrackProps {
   location: 'head' | 'body' | 'legs';
   damage: DamageLocation;
-  hitTable: HitTable;
+  armorRolls: ArmorRolls;
   criticalEffects: CriticalEffect[];
   modifiers?: (number | null)[]; // Modifier values for each pip (e.g., [null, null, 1, 2, 3])
   onDamageChange: (value: number) => void;
   onCriticalChange?: (level: 'yellow' | 'orange' | 'red' | null) => void;
-  showHitTable?: boolean; // Optional prop to show/hide hit table
-  showCriticalEffects?: boolean; // Optional prop to show/hide critical effects
+  showArmorRolls?: boolean;
+  showCriticalEffects?: boolean;
 }
 
 export default function DamageTrack({
   location,
   damage,
-  hitTable,
+  armorRolls,
   criticalEffects,
   modifiers,
   onDamageChange,
   onCriticalChange,
-  showHitTable = false,
+  showArmorRolls = false,
   showCriticalEffects = false,
 }: DamageTrackProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -85,7 +85,10 @@ export default function DamageTrack({
           const isFilled = index < damage.current;
           const isFirst = index === 0;
           const isLast = index === damage.max - 1;
-          const modifier = modifiers && modifiers[index] !== null ? modifiers[index] : null;
+          const modifier =
+            modifiers && index < modifiers.length && modifiers[index] !== null && modifiers[index] !== undefined
+              ? modifiers[index]
+              : null;
 
           return (
             <View key={index} style={styles.pipContainer}>
@@ -112,7 +115,7 @@ export default function DamageTrack({
       </View>
 
       {/* Expanded Info Section */}
-      {(showHitTable || showCriticalEffects) && (
+      {(showArmorRolls || showCriticalEffects) && (
         <Animated.View style={[
           styles.expandedSection,
           {
@@ -131,27 +134,27 @@ export default function DamageTrack({
             }),
           }
         ]}>
-          {/* Hit Table */}
-          {showHitTable && (
+          {/* Armor rolls (roll ranges per hit type) */}
+          {showArmorRolls && (
             <View style={styles.damageSection}>
-              <Text style={styles.sectionTitle}>DAMAGE</Text>
-              <View style={styles.hitTableContainer}>
-                <View style={styles.hitTableColumn}>
-                  <Text style={styles.hitTableRange}>{hitTable.directHit}</Text>
-                  <Text style={styles.hitTableRange}>{hitTable.devastatingHit}</Text>
-                  <Text style={styles.hitTableRange}>{hitTable.criticalHit}</Text>
+              <Text style={styles.sectionTitle}>ARMOR ROLLS</Text>
+              <View style={styles.armorRollsContainer}>
+                <View style={styles.armorRollsColumn}>
+                  <Text style={styles.armorRollsRange}>{armorRolls.direct}</Text>
+                  <Text style={styles.armorRollsRange}>{armorRolls.devastating}</Text>
+                  <Text style={styles.armorRollsRange}>{armorRolls.critical}</Text>
                 </View>
-                <View style={styles.hitTableLabelColumn}>
-                  <Text style={styles.hitTableLabel}>Direct</Text>
-                  <Text style={styles.hitTableLabel}>Devastating</Text>
-                  <Text style={styles.hitTableLabel}>Critical</Text>
+                <View style={styles.armorRollsLabelColumn}>
+                  <Text style={styles.armorRollsLabel}>Direct armor roll</Text>
+                  <Text style={styles.armorRollsLabel}>Devastating armor roll</Text>
+                  <Text style={styles.armorRollsLabel}>Critical armor roll</Text>
                 </View>
               </View>
             </View>
           )}
 
           {/* Divider */}
-          {showHitTable && showCriticalEffects && (
+          {showArmorRolls && showCriticalEffects && (
             <View style={styles.divider} />
           )}
 
@@ -162,7 +165,7 @@ export default function DamageTrack({
               <View style={styles.criticalEffectsList}>
                 {criticalEffects.map((effect, index) => (
                   <Text key={index} style={styles.criticalEffectText}>
-                    {['I', 'II', 'III'][index]}. {effect.effects.join(', ')}
+                    {['I', 'II', 'III', 'IV'][index]}. {effect.effects.join(', ')}
                   </Text>
                 ))}
               </View>
@@ -231,28 +234,19 @@ const styles = StyleSheet.create({
   pipGreenFilled: {
     backgroundColor: 'rgba(89, 255, 0, 0.8)',
     borderColor: '#15ff00',
-    shadowColor: 'rgba(21, 255, 0, 0.8)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
+    boxShadow: '0px 0px 10px rgba(21, 255, 0, 0.8)',
     elevation: 10,
   },
   pipNormalFilled: {
     backgroundColor: 'rgba(211, 255, 207, 0.8)',
     borderColor: '#d3ffcf',
-    shadowColor: 'rgba(211, 255, 207, 0.8)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
+    boxShadow: '0px 0px 10px rgba(211, 255, 207, 0.8)',
     elevation: 10,
   },
   pipRedFilled: {
     backgroundColor: 'rgba(255, 30, 0, 0.8)',
     borderColor: '#ff2600',
-    shadowColor: 'rgba(255, 38, 0, 0.8)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
+    boxShadow: '0px 0px 10px rgba(255, 38, 0, 0.8)',
     elevation: 10,
   },
   pipEmpty: {
@@ -282,24 +276,24 @@ const styles = StyleSheet.create({
     fontFamily: 'RobotoMono_700Bold',
     lineHeight: 15.6,
   },
-  hitTableContainer: {
+  armorRollsContainer: {
     flexDirection: 'row' as 'row',
     gap: 8,
   },
-  hitTableColumn: {
+  armorRollsColumn: {
     gap: 0,
   },
-  hitTableRange: {
+  armorRollsRange: {
     color: '#8be39d',
     fontSize: 12,
     fontFamily: 'RobotoMono_400Regular',
     lineHeight: 15.6,
   },
-  hitTableLabelColumn: {
+  armorRollsLabelColumn: {
     flex: 1,
     gap: 0,
   },
-  hitTableLabel: {
+  armorRollsLabel: {
     color: '#8be39d',
     fontSize: 12,
     fontFamily: 'RobotoMono_400Regular',

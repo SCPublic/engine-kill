@@ -2,6 +2,25 @@ import { Unit, Weapon } from '../models/Unit';
 import { UnitTemplate, WeaponTemplate } from '../models/UnitTemplate';
 import { storageService } from './storageService';
 
+function weaponTemplateToWeapon(w: WeaponTemplate): Weapon {
+  return {
+    id: w.id,
+    name: w.name,
+    points: w.points,
+    shortRange: w.shortRange,
+    longRange: w.longRange,
+    accuracyShort: w.accuracyShort,
+    accuracyLong: w.accuracyLong,
+    dice: w.dice,
+    strength: w.strength,
+    traits: w.traits,
+    specialRules: w.specialRules ?? [],
+    status: 'ready',
+    ...(w.repairRoll && { repairRoll: w.repairRoll }),
+    ...(w.disabledRollLines && { disabledRollLines: w.disabledRollLines }),
+  };
+}
+
 export const unitService = {
   // Create a unit from a template
   createUnitFromTemplate(
@@ -10,7 +29,14 @@ export const unitService = {
     name?: string
   ): Unit {
     const unitId = `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
+    const defaultLeft = template.defaultLeftWeaponId
+      ? template.availableWeapons.find((w) => w.id === template.defaultLeftWeaponId)
+      : undefined;
+    const defaultRight = template.defaultRightWeaponId
+      ? template.availableWeapons.find((w) => w.id === template.defaultRightWeaponId)
+      : undefined;
+
     return {
       id: unitId,
       name: name || template.name,
@@ -34,7 +60,6 @@ export const unitService = {
         head: {
           current: 1, // Default to 1 pip filled
           max: template.defaultStats.damage.head.max,
-          armor: template.defaultStats.damage.head.armor,
           criticals: {
             yellow: null,
             orange: null,
@@ -44,7 +69,6 @@ export const unitService = {
         body: {
           current: 1, // Default to 1 pip filled
           max: template.defaultStats.damage.body.max,
-          armor: template.defaultStats.damage.body.armor,
           criticals: {
             yellow: null,
             orange: null,
@@ -54,7 +78,6 @@ export const unitService = {
         legs: {
           current: 1, // Default to 1 pip filled
           max: template.defaultStats.damage.legs.max,
-          armor: template.defaultStats.damage.legs.armor,
           criticals: {
             yellow: null,
             orange: null,
@@ -62,8 +85,8 @@ export const unitService = {
           },
         },
       },
-      leftWeapon: null,
-      rightWeapon: null,
+      leftWeapon: defaultLeft ? weaponTemplateToWeapon(defaultLeft) : null,
+      rightWeapon: defaultRight ? weaponTemplateToWeapon(defaultRight) : null,
       ...(template.defaultStats.hasCarapaceWeapon && { carapaceWeapon: null }),
       stats: { ...template.defaultStats.stats },
     };

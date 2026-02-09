@@ -1,4 +1,4 @@
-import { UnitTemplate, UnitStats } from '../../models/UnitTemplate';
+import { UnitTemplate, UnitStats, type ArmorRolls } from '../../models/UnitTemplate';
 import { DEFAULT_DATA_BASE_URL } from '../../utils/constants';
 import { childText, findAll, parseXml, XmlNode } from './xml';
 import type { WeaponTemplate } from '../../models/UnitTemplate';
@@ -6,6 +6,8 @@ import {
   loadTitanDataOverrides,
   type ChassisOverrideJson,
   type DamageTracksJson,
+  type DamageLocationJson,
+  type DefaultCriticalEffectsJson,
   type WeaponMetadataJson,
 } from '../../services/titanDataOverrides';
 import type { ManipleTemplate } from '../../models/ManipleTemplate';
@@ -69,10 +71,20 @@ export interface BattleScribePrincepsTraitsLoadResult {
 const LOYALIST_LEGIOS_PUBLICATION_ID = '3401-191e-1333-8a1d';
 const TRAITOR_LEGIOS_PUBLICATION_ID = 'bf8b-27d7-039e-5df9';
 
+/** Publication IDs used in titan-data for traitor legions (source books; all traitor legions are in Traitor Legios). */
+const TRAITOR_LEGION_PUBLICATION_IDS = new Set([
+  TRAITOR_LEGIOS_PUBLICATION_ID,
+  '975a-00f4-pubN87630', // Titandeath (Mortis, Krytos, Fureans, Vulpa)
+  '975a-00f4-pubN89746', // Doom of Molech (Vulcanum, Interfector)
+  '3265-f408-cc9b-bfa3', // Shadow and Iron (Infernus, Mordaxis, Audax)
+  '2988-f24d-39ef-352e', // Defense of Ryza (Magna, Vulturum)
+  'ce02-a882-fdad-dd36', // Crucible of Retribution (Laniaskara, Kulisaetai, Tritonis, Damicium)
+]);
+
 function inferLegionAllegianceFromPublicationId(publicationId?: string | null): LegionTemplate['allegiance'] {
   const pid = (publicationId ?? '').trim();
   if (pid === LOYALIST_LEGIOS_PUBLICATION_ID) return 'loyalist';
-  if (pid === TRAITOR_LEGIOS_PUBLICATION_ID) return 'traitor';
+  if (TRAITOR_LEGION_PUBLICATION_IDS.has(pid)) return 'traitor';
   return 'unknown';
 }
 
@@ -237,11 +249,14 @@ function isTitanOfLegend(se: XmlNode): boolean {
   return categories.some((c) => c.includes('titan of legend') || c.includes('titans of legend'));
 }
 
+function defaultPlaceholderArmorRolls(): ArmorRolls {
+  return { direct: '—', devastating: '—', critical: '—' };
+}
+
 function defaultPlaceholderDamage(max: number) {
   return {
     max,
-    armor: { directHit: 0, devastatingHit: 0, crit: 0 },
-    hitTable: { directHit: '—', devastatingHit: '—', criticalHit: '—' },
+    armorRolls: defaultPlaceholderArmorRolls(),
     modifiers: Array(max).fill(null) as (number | null)[],
   };
 }
@@ -316,6 +331,43 @@ function collectEntryLinks(root: XmlNode): Array<{ targetId: string; mountType: 
 
   walk(root, [root.attributes.name || '']);
   return out;
+}
+
+type WeaponLink = { targetId: string; mountType: 'arm' | 'carapace' };
+
+/** Collect weapon entry links and default arm weapons from GST (groups with single entryLink and min >= 1). */
+function collectWeaponLinksAndDefaults(
+  root: XmlNode,
+  byId: Map<string, XmlNode>
+): { links: WeaponLink[]; defaultLeftWeaponId?: string; defaultRightWeaponId?: string } {
+  const links = collectEntryLinks(root);
+  let defaultLeftWeaponId: string | undefined;
+  let defaultRightWeaponId: string | undefined;
+
+  const armGroups = findAll(root, (n) => {
+    if (n.name !== 'selectionEntryGroup') return false;
+    const name = (n.attributes.name || '').trim().toLowerCase();
+    return name === 'left arm' || name === 'right arm';
+  });
+
+  for (const group of armGroups) {
+    const groupName = (group.attributes.name || '').trim().toLowerCase();
+    const entryLinks = group.children.filter((c) => c.name === 'entryLinks').flatMap((c) => c.children.filter((ch) => ch.name === 'entryLink'));
+    if (entryLinks.length !== 1) continue;
+    const link = entryLinks[0]!;
+    const { min } = parseConstraints(link);
+    if (min === undefined || min < 1) continue;
+    const targetId = link.attributes.targetId;
+    if (!targetId) continue;
+    const target = byId.get(targetId);
+    if (!target) continue;
+    const wt = selectionEntryToWeaponTemplate(target, 'arm');
+    if (!wt) continue;
+    if (groupName === 'left arm') defaultLeftWeaponId = wt.id;
+    else if (groupName === 'right arm') defaultRightWeaponId = wt.id;
+  }
+
+  return { links, defaultLeftWeaponId, defaultRightWeaponId };
 }
 
 function selectionEntryToWeaponTemplate(
@@ -601,10 +653,43 @@ function getChassisOverride(fromTitanData: ChassisOverrideJson | undefined): Cha
   return hasTitanData ? fromTitanData : undefined;
 }
 
-/** Apply damage tracks + criticalEffects from titan-data JSON onto a template's defaultStats. */
+/** Chassis id → damage-tracks.json key. Resolved via titan-data chassis-aliases.json (e.g. warbringer→nemesis, bs:dfeb-83af-7b26-622a→warlord). */
+function getDamageTrackKey(chassisId: string, chassisAliases: Record<string, string> | undefined): string {
+  return chassisAliases?.[chassisId] ?? chassisId;
+}
+
+/** Map titan-data JSON (armorRolls or legacy hitTable) to ArmorRolls. */
+function toArmorRolls(loc: DamageLocationJson): ArmorRolls {
+  const ar = loc.armorRolls ?? loc.hitTable as Record<string, string | undefined> | undefined;
+  if (ar) {
+    return {
+      direct: ar.direct ?? ar.directHit ?? '—',
+      devastating: ar.devastating ?? ar.devastatingHit ?? '—',
+      critical: ar.critical ?? ar.criticalHit ?? '—',
+    };
+  }
+  return defaultPlaceholderArmorRolls();
+}
+
+/** Modifiers in JSON are for the last N positions: [1, 2, 3] with max 5 → position 1,2 null, positions 3,4,5 get 1,2,3. */
+function toModifiers(loc: DamageLocationJson, max: number): (number | null)[] {
+  const values = loc.modifiers;
+  if (values == null || values.length === 0) return new Array(max).fill(null) as (number | null)[];
+  const arr = new Array(max).fill(null) as (number | null)[];
+  const start = Math.max(0, max - values.length);
+  for (let i = 0; i < values.length && start + i < max; i++) {
+    const v = values[i];
+    const n = typeof v === 'number' && Number.isFinite(v) ? v : Number(v);
+    arr[start + i] = Number.isFinite(n) ? n : null;
+  }
+  return arr;
+}
+
+/** Apply damage tracks + criticalEffects from titan-data JSON onto a template's defaultStats. Uses defaultCriticalEffects when a location omits criticalEffects. */
 function applyDamageTracksFromJson(
   template: UnitTemplate,
-  damageTracksEntry: DamageTracksJson[string]
+  damageTracksEntry: DamageTracksJson[string],
+  defaultCriticalEffects: DefaultCriticalEffectsJson
 ): UnitTemplate['defaultStats'] {
   if (!damageTracksEntry) return template.defaultStats;
   const { head, body, legs } = damageTracksEntry;
@@ -613,27 +698,24 @@ function applyDamageTracksFromJson(
     damage: {
       head: {
         max: head.max,
-        armor: head.armor,
-        hitTable: head.hitTable,
-        modifiers: head.modifiers ?? Array(head.max).fill(null) as (number | null)[],
+        armorRolls: toArmorRolls(head),
+        modifiers: toModifiers(head, head.max),
       },
       body: {
         max: body.max,
-        armor: body.armor,
-        hitTable: body.hitTable,
-        modifiers: body.modifiers ?? Array(body.max).fill(null) as (number | null)[],
+        armorRolls: toArmorRolls(body),
+        modifiers: toModifiers(body, body.max),
       },
       legs: {
         max: legs.max,
-        armor: legs.armor,
-        hitTable: legs.hitTable,
-        modifiers: legs.modifiers ?? Array(legs.max).fill(null) as (number | null)[],
+        armorRolls: toArmorRolls(legs),
+        modifiers: toModifiers(legs, legs.max),
       },
     },
     criticalEffects: {
-      head: head.criticalEffects ?? [],
-      body: body.criticalEffects ?? [],
-      legs: legs.criticalEffects ?? [],
+      head: head.criticalEffects ?? defaultCriticalEffects.head,
+      body: body.criticalEffects ?? defaultCriticalEffects.body,
+      legs: legs.criticalEffects ?? defaultCriticalEffects.legs,
     },
   };
 }
@@ -658,6 +740,16 @@ export async function loadAllTitanTemplatesFromBattleScribe(
   const warnings: string[] = [];
 
   const overrides = await loadTitanDataOverrides(source.baseUrl);
+  if (Object.keys(overrides.damageTracks).length === 0) {
+    warnings.push(
+      'Damage tracks from titan-data could not be loaded. Armour rolls and pips per location will be missing. Load engine-kill/damage-tracks.json from titan-data (check network and retry).'
+    );
+  }
+  if (overrides.defaultCriticalEffects.head.length === 0) {
+    warnings.push(
+      'Critical effects from titan-data could not be loaded. Critical effect text will be empty. Load engine-kill/critical-effects.json from titan-data (check network and retry).'
+    );
+  }
 
   const xmlStrings: string[] = [];
   for (const file of source.files) {
@@ -670,7 +762,17 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     xmlStrings.push(await res.text());
   }
 
-  const chassisById = new Map<string, { id: string; name: string; points?: number; chars: Record<string, string>; max: ReturnType<typeof extractChassisMaxValues>; weapons: WeaponTemplate[] }>();
+  type ChassisEntry = {
+    id: string;
+    name: string;
+    points?: number;
+    chars: Record<string, string>;
+    max: ReturnType<typeof extractChassisMaxValues>;
+    weapons: WeaponTemplate[];
+    defaultLeftWeaponId?: string;
+    defaultRightWeaponId?: string;
+  };
+  const chassisById = new Map<string, ChassisEntry>();
 
   for (const xml of xmlStrings) {
     const doc = parseXml(xml);
@@ -690,11 +792,14 @@ export async function loadAllTitanTemplatesFromBattleScribe(
       if (!isLikelyTitanChassis(se, chars)) continue;
 
       const id = makeStableTitanTemplateId(se);
+      let key = id;
+      if (chassisById.has(key) && se.attributes.id) key = `bs:${se.attributes.id}`;
+      const existing = chassisById.get(key);
+
       const points = parsePointsFromSelectionEntry(se);
       const max = extractChassisMaxValues(chars);
 
-      // Resolve weapon links
-      const links = collectEntryLinks(se);
+      const { links, defaultLeftWeaponId, defaultRightWeaponId } = collectWeaponLinksAndDefaults(se, byId);
       const weapons: WeaponTemplate[] = [];
       const weaponById = new Map<string, WeaponTemplate>();
 
@@ -705,18 +810,15 @@ export async function loadAllTitanTemplatesFromBattleScribe(
         if (!target) continue;
         const wt = selectionEntryToWeaponTemplate(target, link.mountType);
         if (!wt) continue;
-        const existing = weaponById.get(wt.id);
-        if (!existing || weaponScore(wt) > weaponScore(existing)) weaponById.set(wt.id, wt);
+        const prev = weaponById.get(wt.id);
+        if (!prev || weaponScore(wt) > weaponScore(prev)) weaponById.set(wt.id, wt);
       }
       weaponById.forEach((w) => weapons.push(w));
 
-      const existing = chassisById.get(id);
-      if (!existing) {
-        chassisById.set(id, { id, name: displayName, points, chars, max, weapons });
-      } else {
+      if (existing && key === id) {
         // Merge: keep best-known values
-        chassisById.set(id, {
-          id,
+        chassisById.set(key, {
+          id: key,
           name: existing.name || displayName,
           points: existing.points ?? points,
           chars: { ...existing.chars, ...chars },
@@ -726,6 +828,19 @@ export async function loadAllTitanTemplatesFromBattleScribe(
             maxHeat: existing.max.maxHeat ?? max.maxHeat,
           },
           weapons: existing.weapons.length ? existing.weapons : weapons,
+          defaultLeftWeaponId: existing.defaultLeftWeaponId ?? defaultLeftWeaponId,
+          defaultRightWeaponId: existing.defaultRightWeaponId ?? defaultRightWeaponId,
+        });
+      } else {
+        chassisById.set(key, {
+          id: key,
+          name: displayName,
+          points,
+          chars,
+          max,
+          weapons,
+          defaultLeftWeaponId,
+          defaultRightWeaponId,
         });
       }
     }
@@ -740,7 +855,8 @@ export async function loadAllTitanTemplatesFromBattleScribe(
   const hasWeaponMetadata = Object.keys(overrides.weaponMetadata).length > 0;
 
   for (const c of sorted) {
-    const override = getChassisOverride(overrides.chassisOverrides[c.id]);
+    const chassisKey = getDamageTrackKey(c.id, overrides.chassisAliases);
+    const override = getChassisOverride(overrides.chassisOverrides[chassisKey]);
     const effectiveVoidShieldsMax = c.max.voidShieldsMax ?? override?.voidShieldsMax;
     const effectivePlasmaReactorMax = c.max.plasmaReactorMax ?? override?.plasmaReactorMax;
     const effectiveMaxHeat = c.max.maxHeat ?? (effectivePlasmaReactorMax !== undefined ? effectivePlasmaReactorMax : undefined);
@@ -753,8 +869,14 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     if (missing.length) missingMaxData.push({ id: c.id, name: c.name, missing });
 
     const base = defaultPlaceholderTitanTemplate(c.id, c.name);
-    const baseStats = overrides.damageTracks[c.id]
-      ? applyDamageTracksFromJson(base, overrides.damageTracks[c.id])
+    const damageEntry = overrides.damageTracks[chassisKey];
+    if (!damageEntry) {
+      warnings.push(
+        `Chassis "${c.name}" (${c.id}) has no damage track in titan-data; armour/pips will be placeholders.`
+      );
+    }
+    const baseStats = damageEntry
+      ? applyDamageTracksFromJson(base, damageEntry, overrides.defaultCriticalEffects)
       : base.defaultStats;
     const overWeapons =
       c.weapons.length > 0
@@ -778,6 +900,8 @@ export async function loadAllTitanTemplatesFromBattleScribe(
         stats: applyStatsOverlay(base.defaultStats.stats, c.chars),
       },
       availableWeapons: overWeapons,
+      ...(c.defaultLeftWeaponId && { defaultLeftWeaponId: c.defaultLeftWeaponId }),
+      ...(c.defaultRightWeaponId && { defaultRightWeaponId: c.defaultRightWeaponId }),
     });
   }
 
@@ -1263,6 +1387,8 @@ function selectionEntryToManipleTemplate(se: XmlNode, byId: Map<string, XmlNode>
   // Reasonable fallback for known starter templates if constraints weren't discovered.
   const specialRule = extractFirstRuleText(se) ?? `${name}: (BattleScribe)`;
 
+  const allegiance = inferLegionAllegianceFromPublicationId(se.attributes.publicationId);
+
   return {
     id,
     name,
@@ -1270,6 +1396,7 @@ function selectionEntryToManipleTemplate(se: XmlNode, byId: Map<string, XmlNode>
     minTitans,
     maxTitans,
     specialRule,
+    ...(allegiance && allegiance !== 'unknown' ? { allegiance } : {}),
   };
 }
 
@@ -1334,6 +1461,7 @@ export async function loadManipleTemplatesFromBattleScribe(
         minTitans: existing.minTitans || m.minTitans,
         maxTitans: existing.maxTitans || m.maxTitans,
         specialRule: existing.specialRule || m.specialRule,
+        allegiance: existing.allegiance || m.allegiance,
       });
     }
   }
@@ -1407,6 +1535,9 @@ export async function loadUpgradeTemplatesFromBattleScribe(
     const res = await fetch(url);
     if (!res.ok) {
       warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'battlescribeAdapter.ts:loadUpgrades',message:'fetch failed',data:{file,status:res.status,url},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       continue;
     }
     xmlStrings.push(await res.text());
@@ -1462,6 +1593,9 @@ export async function loadUpgradeTemplatesFromBattleScribe(
 
   upgrades.sort((a, b) => a.name.localeCompare(b.name));
   if (upgrades.length === 0) warnings.push('No wargear upgrades were resolved from BattleScribe data.');
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'battlescribeAdapter.ts:loadUpgrades',message:'result',data:{upgradesCount:upgrades.length,xmlCount:xmlStrings.length,warnings},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   return { upgrades, warnings };
 }
 

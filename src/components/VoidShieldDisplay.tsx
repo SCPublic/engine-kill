@@ -9,6 +9,36 @@ import {
 } from 'react-native';
 import { fontSize, layout, spacing } from '../theme/tokens';
 
+type RGB = { r: number; g: number; b: number };
+
+function colorToRgb(color: string): RGB {
+  if (color.startsWith('#')) {
+    const h = color.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  const m = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+  if (m) return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
+  return { r: 255, g: 255, b: 255 };
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function lerpColor(a: string, b: string, t: number) {
+  const A = colorToRgb(a);
+  const B = colorToRgb(b);
+  return `rgb(${Math.round(lerp(A.r, B.r, t))}, ${Math.round(lerp(A.g, B.g, t))}, ${Math.round(lerp(A.b, B.b, t))})`;
+}
+
+/** Darken a color for unlit bulb styling; hue remains visible. */
+function darkenForUnlit(hex: string, amount: number = 0.88): string {
+  return lerpColor(hex, '#0d0d0d', amount);
+}
+
+const TURN_ON_DURATION_MS = 180;
+
 const SHIELD_COLORS = {
   strong: '#00e5ff', // cyan
   mid: '#8a2be2', // blueviolet
@@ -34,6 +64,9 @@ export default function VoidShieldDisplay({
   const pulse = useRef(new Animated.Value(0)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const isPulsingRef = useRef(false);
+  const [turnOnPipIndex, setTurnOnPipIndex] = React.useState<number | null>(null);
+  const turnOnOpacity = useRef(new Animated.Value(1)).current;
+  const prevActiveIndexRef = useRef<number | null>(null);
 
   const safeShields: number[] = Array.isArray(shields) ? shields : [];
   const safeSaves: string[] = Array.isArray(saves) ? saves : [];
@@ -41,6 +74,24 @@ export default function VoidShieldDisplay({
   // Find which pip is currently selected (first active one, or default to 0)
   const selectedIndex = safeShields.findIndex((s) => s > 0);
   const activeIndex = selectedIndex >= 0 ? selectedIndex : 0; // Default to leftmost (0)
+
+  useEffect(() => {
+    if (prevActiveIndexRef.current !== null && prevActiveIndexRef.current !== activeIndex) {
+      turnOnOpacity.setValue(0);
+      setTurnOnPipIndex(activeIndex);
+    }
+    prevActiveIndexRef.current = activeIndex;
+  }, [activeIndex, turnOnOpacity]);
+
+  useEffect(() => {
+    if (turnOnPipIndex === null) return;
+    Animated.timing(turnOnOpacity, {
+      toValue: 1,
+      duration: TURN_ON_DURATION_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => setTurnOnPipIndex(null));
+  }, [turnOnPipIndex, turnOnOpacity]);
 
   const activeSaveValue = safeSaves[activeIndex] || '';
   const activeIsDestroyed = activeSaveValue === 'X';
@@ -149,10 +200,12 @@ export default function VoidShieldDisplay({
 
           // Simplified: all non-X pips are cyan, last/X pip is red.
           const glowStrength = 1.0;
-          const isEnergyActive = isActive && !isDestroyed;
           const pipBorder = isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong;
-          // Match reactor: bright/white-ish core so the aura reads clearly.
-          const pipFillActive = isDestroyed ? SHIELD_COLORS.danger : '#eaffff';
+          // Match reactor: bright core; red pip uses red + cyan blend for accent/shadow (no pulse).
+          const pipFillActive = '#eaffff';
+          const destroyedAccent = isDestroyed
+            ? lerpColor(SHIELD_COLORS.danger, SHIELD_COLORS.strong, 0.35)
+            : SHIELD_COLORS.strong;
 
           const PipComponent = isClickable ? TouchableOpacity : View;
 
@@ -172,54 +225,107 @@ export default function VoidShieldDisplay({
                 <View style={styles.pipStack} pointerEvents="none" collapsable={false}>
                   {/* Match PlasmaReactor pip feel: soft expanding aura + thin ring.
                       Keep it cyan “energy”, regardless of core shield strength color. */}
-                  {isEnergyActive && (
-                    <>
-                      <Animated.View
+                  {isActive ? (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.litContainer,
+                        { opacity: turnOnPipIndex === index ? turnOnOpacity : 1 },
+                      ]}
+                    >
+                      {!isDestroyed && (
+                        <>
+                          <Animated.View
+                            pointerEvents="none"
+                            style={[
+                              styles.shieldAura,
+                              {
+                                backgroundColor: SHIELD_COLORS.strong,
+                                opacity: auraOpacity,
+                                transform: [{ scale: auraScale }],
+                              },
+                            ]}
+                          />
+                          <Animated.View
+                            pointerEvents="none"
+                            style={[
+                              styles.shieldRing,
+                              {
+                                borderColor: SHIELD_COLORS.strong,
+                                opacity: ringOpacity,
+                                transform: [{ scale: ringScale }],
+                              },
+                            ]}
+                          />
+                        </>
+                      )}
+                      {isDestroyed && (
+                        <>
+                          <View
+                            pointerEvents="none"
+                            style={[
+                              styles.shieldAura,
+                              styles.destroyedAura,
+                              {
+                                backgroundColor: SHIELD_COLORS.danger,
+                              },
+                            ]}
+                          />
+                          <View
+                            pointerEvents="none"
+                            style={[
+                              styles.shieldAura,
+                              styles.destroyedAuraAccent,
+                              {
+                                backgroundColor: destroyedAccent,
+                              },
+                            ]}
+                          />
+                          <View
+                            pointerEvents="none"
+                            style={[
+                              styles.shieldRing,
+                              styles.destroyedRing,
+                              {
+                                borderColor: SHIELD_COLORS.danger,
+                              },
+                            ]}
+                          />
+                        </>
+                      )}
+                      <View pointerEvents="none" style={styles.pipWrapper}>
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.pip,
+                            { backgroundColor: pipFillActive, borderColor: pipBorder },
+                            {
+                              shadowColor: isDestroyed ? destroyedAccent : SHIELD_COLORS.strong,
+                              shadowOpacity: isDestroyed ? 0.6 : 0.4 * glowStrength,
+                              shadowRadius: isDestroyed ? 10 : 8,
+                              elevation: isDestroyed ? 6 : Math.max(2, Math.round(6 * glowStrength)),
+                            },
+                          ]}
+                        />
+                      </View>
+                      {!isDestroyed && (
+                        <View pointerEvents="none" style={[styles.shieldCoreTint, { opacity: 0.18 * glowStrength }]} />
+                      )}
+                    </Animated.View>
+                  ) : (
+                    <View pointerEvents="none" style={styles.pipWrapper}>
+                      <View
                         pointerEvents="none"
                         style={[
-                          styles.shieldAura,
+                          styles.pip,
                           {
-                            backgroundColor: SHIELD_COLORS.strong,
-                            opacity: auraOpacity,
-                            transform: [{ scale: auraScale }],
+                            backgroundColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong),
+                            borderColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong, 0.75),
                           },
                         ]}
                       />
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.shieldRing,
-                          {
-                            borderColor: SHIELD_COLORS.strong,
-                            opacity: ringOpacity,
-                            transform: [{ scale: ringScale }],
-                          },
-                        ]}
-                      />
-                    </>
-                  )}
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.pip,
-                      // Active, not destroyed: filled with strength color
-                      isActive && !isDestroyed && { backgroundColor: pipFillActive, borderColor: pipBorder },
-                      // Active and destroyed ("X"): red pip
-                      isActive && isDestroyed && { backgroundColor: pipFillActive, borderColor: pipBorder },
-                      // Non-active destroyed: red border
-                      !isActive && isDestroyed && styles.pipDestroyed,
-                      // Add glow only when active and not destroyed
-                      isEnergyActive && {
-                        shadowColor: SHIELD_COLORS.strong,
-                        shadowOpacity: 0.4 * glowStrength,
-                        shadowRadius: 8,
-                        elevation: Math.max(2, Math.round(6 * glowStrength)),
-                      },
-                    ]}
-                  />
-                  {/* Optional subtle cyan tint so the “white-ish” core still reads as cyan */}
-                  {isEnergyActive && (
-                    <View pointerEvents="none" style={[styles.shieldCoreTint, { opacity: 0.18 * glowStrength }]} />
+                      <View pointerEvents="none" style={styles.pipReflection} />
+                    </View>
                   )}
                 </View>
               </PipComponent>
@@ -298,11 +404,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
+  litContainer: {
+    position: 'absolute',
+    width: layout.pipTouchSize,
+    height: layout.pipTouchSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipWrapper: {
+    position: 'relative',
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipReflection: {
+    position: 'absolute',
+    top: 2,
+    left: 5,
+    width: 10,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
   shieldAura: {
     position: 'absolute',
     width: 20,
     height: 20,
     borderRadius: 10,
+  },
+  destroyedAura: {
+    opacity: 0.26,
+    transform: [{ scale: 1.25 }],
+  },
+  destroyedAuraAccent: {
+    opacity: 0.143,
+    transform: [{ scale: 1.55 }],
+  },
+  destroyedRing: {
+    opacity: 0.14,
+    transform: [{ scale: 1.08 }],
   },
   shieldRing: {
     position: 'absolute',

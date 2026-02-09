@@ -22,7 +22,7 @@ export const fontSize = {
 } as const;
 
 export const colors = {
-  bg: '#0a0a0a',
+  bg: '#000000',
   panel: '#1a1a1a',
   panelAlt: '#2a2a2a',
   border: '#444',

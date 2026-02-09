@@ -1,13 +1,15 @@
-import { ArmorValues, Weapon } from './Unit';
+import { Weapon } from './Unit';
 
-export interface HitTable {
-  directHit: string; // e.g., "11-13"
-  devastatingHit: string; // e.g., "14-15"
-  criticalHit: string; // e.g., "16+"
+/** Armor roll ranges per hit type (e.g. "11-13", "14-15", "16+") from titan-data. */
+export interface ArmorRolls {
+  direct: string;
+  devastating: string;
+  critical: string;
 }
 
+/** Level 4 used for Warmaster head (4 crit tracks; first two share same effect as level 1). UI still shows 3 pips but can display 4 effect rows. */
 export interface CriticalEffect {
-  level: 1 | 2 | 3;
+  level: 1 | 2 | 3 | 4;
   effects: string[];
 }
 
@@ -55,9 +57,9 @@ export interface UnitTemplate {
     plasmaReactorMax: number; // Usually 5 for most Titans
     plasmaReactorColors?: string[]; // Optional per-pip color overrides (length should match plasmaReactorMax)
     damage: {
-      head: { max: number; armor: ArmorValues; hitTable: HitTable; modifiers?: (number | null)[] };
-      body: { max: number; armor: ArmorValues; hitTable: HitTable; modifiers?: (number | null)[] };
-      legs: { max: number; armor: ArmorValues; hitTable: HitTable; modifiers?: (number | null)[] };
+      head: { max: number; armorRolls: ArmorRolls; modifiers?: (number | null)[] };
+      body: { max: number; armorRolls: ArmorRolls; modifiers?: (number | null)[] };
+      legs: { max: number; armorRolls: ArmorRolls; modifiers?: (number | null)[] };
     };
     criticalEffects?: {
       head: CriticalEffect[];
@@ -68,5 +70,9 @@ export interface UnitTemplate {
     stats: UnitStats;
   };
   availableWeapons: WeaponTemplate[];
+  /** If set, unit is created with this weapon in the left arm (from GST min=1 single-option group). */
+  defaultLeftWeaponId?: string;
+  /** If set, unit is created with this weapon in the right arm (from GST min=1 single-option group). */
+  defaultRightWeaponId?: string;
 }
 

@@ -10,6 +10,7 @@ import {
   type BattleScribeUpgradesLoadResult,
   type BattleScribePrincepsTraitsLoadResult,
 } from '../adapters/battlescribe/battlescribeAdapter';
+import { clearTitanDataOverridesCache } from './titanDataOverrides';
 
 type CacheStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -68,6 +69,7 @@ export const battleScribeCache = {
   },
   async reloadTitans() {
     reset(titanCache);
+    clearTitanDataOverridesCache();
     return await this.loadTitansOnce();
   },
 

@@ -4,7 +4,8 @@ import { fontSize, layout, spacing } from '../theme/tokens';
 
 type RGB = { r: number; g: number; b: number };
 
-const HEAT_COLORS = ['#4caf50', '#ffeb3b', '#ff9800', '#ff9800', '#f44336'] as const;
+/** Discrete bands: green → yellow → orange → red. All pips in a band use the same color. */
+const HEAT_COLORS = ['#4caf50', '#ffeb3b', '#ff9800', '#f44336'] as const;
 const PLASMA_CYAN = '#00e5ff' as const;
 
 function clamp01(x: number) {
@@ -39,15 +40,18 @@ function lerpColor(a: string, b: string, t: number) {
   return `rgb(${r}, ${g}, ${b2})`;
 }
 
+/** Returns the same color for all pips in a band: green, then yellow, then orange, then red. */
 function getHeatColorForPip(index: number, max: number) {
-  // Prefer matching ColorDisplayRow when max=5, but still behave reasonably for other max values.
   if (max <= 1) return HEAT_COLORS[0];
-  const t = clamp01(index / (max - 1));
-  const scaled = t * (HEAT_COLORS.length - 1);
-  const i0 = Math.floor(scaled);
-  const i1 = Math.min(HEAT_COLORS.length - 1, i0 + 1);
-  const localT = scaled - i0;
-  return lerpColor(HEAT_COLORS[i0], HEAT_COLORS[i1], localT);
+  const bandCount = HEAT_COLORS.length;
+  const bandIndex = Math.min(bandCount - 1, Math.floor((index / max) * bandCount));
+  return HEAT_COLORS[bandIndex];
+}
+
+/** Darken a color for unlit bulb styling; hue remains visible. */
+function darkenForUnlit(hex: string, amount: number = 0.88): string {
+  const dark = '#0d0d0d';
+  return lerpColor(hex, dark, amount);
 }
 
 interface PlasmaReactorDisplayProps {
@@ -56,6 +60,8 @@ interface PlasmaReactorDisplayProps {
   pipColors?: string[];
   onHeatChange?: (value: number) => void;
 }
+
+const TURN_ON_DURATION_MS = 180;
 
 export default function PlasmaReactorDisplay({
   current,
@@ -67,6 +73,28 @@ export default function PlasmaReactorDisplay({
   const pulse = useRef(new Animated.Value(0)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const isPulsingRef = useRef(false);
+  const [turnOnPipIndex, setTurnOnPipIndex] = React.useState<number | null>(null);
+  const turnOnOpacity = useRef(new Animated.Value(1)).current;
+  const prevCurrentRef = useRef(current);
+
+  useEffect(() => {
+    if (current > prevCurrentRef.current) {
+      const newLitIndex = current - 1;
+      turnOnOpacity.setValue(0);
+      setTurnOnPipIndex(newLitIndex);
+    }
+    prevCurrentRef.current = current;
+  }, [current, turnOnOpacity]);
+
+  useEffect(() => {
+    if (turnOnPipIndex === null) return;
+    Animated.timing(turnOnOpacity, {
+      toValue: 1,
+      duration: TURN_ON_DURATION_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => setTurnOnPipIndex(null));
+  }, [turnOnPipIndex, turnOnOpacity]);
 
   useEffect(() => {
     const shouldPulse = current > 0;
@@ -144,31 +172,16 @@ export default function PlasmaReactorDisplay({
     });
   }, [pulse, heat]);
 
-  const filledAuraOpacity = useMemo(() => 0.10 + heat * 0.22, [heat]);
+  // Static base glow for every lit pip (bright); animated aura/ring pulse on top.
+  const filledAuraOpacity = 0.26;
+  const filledRingOpacity = 0.14;
 
-  const filledGlowStyle = useMemo(() => {
-    // Softer than the active pip; still scales with heat.
-    const shadowOpacity = 0.18 + heat * 0.32; // 0.18 -> 0.50
-    const shadowRadius = 4 + heat * 6; // 4 -> 10
-    const elevation = 1 + Math.round(heat * 4); // 1 -> 5
-    return {
-      shadowOpacity,
-      shadowRadius,
-      elevation,
-    };
-  }, [heat]);
-
+  // Original lead-pip glow: heat-scaled so pulse/glow increases toward red. Applied to ALL lit pips.
   const activeGlowStyle = useMemo(() => {
-    // Shadow props are not animatable with the native driver, but we can at least
-    // scale them with reactor heat to "read" stronger at higher heat.
-    const shadowOpacity = 0.35 + heat * 0.55; // 0.35 -> 0.90
-    const shadowRadius = 6 + heat * 8; // 6 -> 14
-    const elevation = 2 + Math.round(heat * 8); // 2 -> 10
-    return {
-      shadowOpacity,
-      shadowRadius,
-      elevation,
-    };
+    const shadowOpacity = 0.35 + heat * 0.55;
+    const shadowRadius = 6 + heat * 8;
+    const elevation = 2 + Math.round(heat * 8);
+    return { shadowOpacity, shadowRadius, elevation };
   }, [heat]);
 
   const handleCirclePress = (index: number) => {
@@ -192,7 +205,6 @@ export default function PlasmaReactorDisplay({
       <View style={[styles.pipsRow, max > 6 && styles.pipsRowWrap]}>
         {Array.from({ length: max }).map((_, index) => {
           const isFilled = index < current;
-          const isActive = current > 0 && index === current - 1;
           const isFirst = index === 0;
           const heatColor = getPipColor(index);
           // Keep the heat matching, but bring back a cyan plasma “energy” accent.
@@ -209,24 +221,36 @@ export default function PlasmaReactorDisplay({
                 activeOpacity={0.7}
               >
                 <View style={styles.pipStack} pointerEvents="none">
-                  {isFilled && (
-                    <View
+                  {isFilled ? (
+                    <Animated.View
                       style={[
-                        styles.plasmaAuraFilled,
-                        { opacity: filledAuraOpacity, backgroundColor: heatColor },
+                        styles.litContainer,
+                        { opacity: turnOnPipIndex === index ? turnOnOpacity : 1 },
                       ]}
-                    />
-                  )}
-                  {isFilled && (
-                    <View
-                      style={[
-                        styles.plasmaAuraAccent,
-                        { opacity: filledAuraOpacity * 0.55, backgroundColor: plasmaAccent },
-                      ]}
-                    />
-                  )}
-                  {isActive && (
-                    <>
+                      pointerEvents="none"
+                    >
+                      <View
+                        style={[
+                          styles.plasmaAuraFilled,
+                          { opacity: filledAuraOpacity, backgroundColor: heatColor },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.plasmaAuraAccent,
+                          { opacity: filledAuraOpacity * 0.55, backgroundColor: plasmaAccent },
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.plasmaRing,
+                          styles.filledRing,
+                          {
+                            borderColor: heatColor,
+                            opacity: filledRingOpacity,
+                          },
+                        ]}
+                      />
                       <Animated.View
                         style={[
                           styles.plasmaAura,
@@ -247,20 +271,35 @@ export default function PlasmaReactorDisplay({
                           },
                         ]}
                       />
-                    </>
+                      <View style={styles.pipWrapper}>
+                        <View
+                          style={[
+                            styles.pip,
+                            styles.pipActive,
+                            {
+                              borderColor: heatColor,
+                              shadowColor: plasmaAccent,
+                            },
+                            styles.pipGlow,
+                            activeGlowStyle,
+                          ]}
+                        />
+                      </View>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.pipWrapper}>
+                      <View
+                        style={[
+                          styles.pip,
+                          {
+                            backgroundColor: darkenForUnlit(heatColor),
+                            borderColor: darkenForUnlit(heatColor, 0.75),
+                          },
+                        ]}
+                      />
+                      <View style={styles.pipReflection} />
+                    </View>
                   )}
-                  <View
-                    style={[
-                      styles.pip,
-                      isFilled && styles.pipFilled,
-                      isActive && styles.pipActive,
-                      isFilled && styles.pipGlow,
-                      isFilled && { shadowColor: plasmaAccent },
-                      isFilled && filledGlowStyle,
-                      isActive && activeGlowStyle,
-                      isActive && { borderColor: heatColor },
-                    ]}
-                  />
                 </View>
               </TouchableOpacity>
             </View>
@@ -318,6 +357,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
+  litContainer: {
+    position: 'absolute',
+    width: layout.pipTouchSize,
+    height: layout.pipTouchSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipWrapper: {
+    position: 'relative',
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pipReflection: {
+    position: 'absolute',
+    top: 2,
+    left: 5,
+    width: 10,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
   pip: {
     width: 20,
     height: 20,
@@ -367,5 +429,8 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     borderWidth: 2,
     backgroundColor: 'transparent',
+  },
+  filledRing: {
+    transform: [{ scale: 1.08 }],
   },
 });
