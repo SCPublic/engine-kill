@@ -66,3 +66,17 @@
 {"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770618123608,"hypothesisId":"H3"}
 {"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770618141353,"hypothesisId":"H3"}
 {"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770618174423,"hypothesisId":"H3"}
+{"location":"battlescribeAdapter.ts:loadUpgrades","message":"result","data":{"upgradesCount":18,"xmlCount":3,"warnings":[]},"timestamp":1770618682752}
+{"location":"useUpgradeTemplates.ts","message":"loaded","data":{"count":18,"warningsCount":0},"timestamp":1770618682753}
+{"location":"battlescribeAdapter.ts:loadUpgrades","message":"result","data":{"upgradesCount":18,"xmlCount":3,"warnings":[]},"timestamp":1770618754919}
+{"location":"useUpgradeTemplates.ts","message":"loaded","data":{"count":18,"warningsCount":0},"timestamp":1770618754919}
+{"location":"battlescribeAdapter.ts:loadUpgrades","message":"result","data":{"upgradesCount":18,"xmlCount":3,"warnings":[]},"timestamp":1770618779653}
+{"location":"useUpgradeTemplates.ts","message":"loaded","data":{"count":18,"warningsCount":0},"timestamp":1770618779653}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770619399638,"hypothesisId":"H3"}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770621890536,"hypothesisId":"H3"}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770622002032,"hypothesisId":"H3"}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770622068926,"hypothesisId":"H3"}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770622155993,"hypothesisId":"H3"}
+{"location":"battlescribeAdapter.ts:loadUpgrades","message":"result","data":{"upgradesCount":18,"xmlCount":3,"warnings":[]},"timestamp":1770622491488}
+{"location":"useUpgradeTemplates.ts","message":"loaded","data":{"count":18,"warningsCount":0},"timestamp":1770622491488}
+{"location":"UnitEditScreen.tsx:unitBattlegroup","message":"useMemo result","data":{"unitBattlegroupId":"battlegroup_1770617165368_ee35gbj97","foundAllegiance":"traitor","battlegroupCount":1},"timestamp":1770622492949,"hypothesisId":"H3"}

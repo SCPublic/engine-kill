@@ -293,38 +293,44 @@ export default function VoidShieldDisplay({
                           />
                         </>
                       )}
-                      <View pointerEvents="none" style={styles.pipWrapper}>
-                        <View
-                          pointerEvents="none"
-                          style={[
-                            styles.pip,
-                            { backgroundColor: pipFillActive, borderColor: pipBorder },
-                            {
-                              shadowColor: isDestroyed ? destroyedAccent : SHIELD_COLORS.strong,
-                              shadowOpacity: isDestroyed ? 0.6 : 0.4 * glowStrength,
-                              shadowRadius: isDestroyed ? 10 : 8,
-                              elevation: isDestroyed ? 6 : Math.max(2, Math.round(6 * glowStrength)),
-                            },
-                          ]}
-                        />
+                      <View pointerEvents="none" style={styles.bulbWithSocket}>
+                        <View pointerEvents="none" style={styles.bulbSocket} />
+                        <View pointerEvents="none" style={styles.pipWrapper}>
+                          <View
+                            pointerEvents="none"
+                            style={[
+                              styles.pip,
+                              { backgroundColor: pipFillActive, borderColor: pipBorder },
+                              {
+                                shadowColor: isDestroyed ? destroyedAccent : SHIELD_COLORS.strong,
+                                shadowOpacity: isDestroyed ? 0.6 : 0.4 * glowStrength,
+                                shadowRadius: isDestroyed ? 10 : 8,
+                                elevation: isDestroyed ? 6 : Math.max(2, Math.round(6 * glowStrength)),
+                              },
+                            ]}
+                          />
+                        </View>
                       </View>
                       {!isDestroyed && (
                         <View pointerEvents="none" style={[styles.shieldCoreTint, { opacity: 0.18 * glowStrength }]} />
                       )}
                     </Animated.View>
                   ) : (
-                    <View pointerEvents="none" style={styles.pipWrapper}>
-                      <View
-                        pointerEvents="none"
-                        style={[
-                          styles.pip,
-                          {
-                            backgroundColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong),
-                            borderColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong, 0.75),
-                          },
-                        ]}
-                      />
-                      <View pointerEvents="none" style={styles.pipReflection} />
+                    <View pointerEvents="none" style={styles.bulbWithSocket}>
+                      <View pointerEvents="none" style={styles.bulbSocket} />
+                      <View pointerEvents="none" style={styles.pipWrapper}>
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.pip,
+                            {
+                              backgroundColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong),
+                              borderColor: darkenForUnlit(isDestroyed ? SHIELD_COLORS.danger : SHIELD_COLORS.strong, 0.75),
+                            },
+                          ]}
+                        />
+                        <View pointerEvents="none" style={styles.pipReflection} />
+                      </View>
                     </View>
                   )}
                 </View>
@@ -410,6 +416,22 @@ const styles = StyleSheet.create({
     height: layout.pipTouchSize,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bulbWithSocket: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulbSocket: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#5a5a5a',
+    backgroundColor: 'transparent',
   },
   pipWrapper: {
     position: 'relative',

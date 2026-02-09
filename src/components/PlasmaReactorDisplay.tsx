@@ -271,33 +271,39 @@ export default function PlasmaReactorDisplay({
                           },
                         ]}
                       />
+                      <View style={styles.bulbWithSocket}>
+                        <View style={styles.bulbSocket} />
+                        <View style={styles.pipWrapper}>
+                          <View
+                            style={[
+                              styles.pip,
+                              styles.pipActive,
+                              {
+                                borderColor: heatColor,
+                                shadowColor: plasmaAccent,
+                              },
+                              styles.pipGlow,
+                              activeGlowStyle,
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.bulbWithSocket}>
+                      <View style={styles.bulbSocket} />
                       <View style={styles.pipWrapper}>
                         <View
                           style={[
                             styles.pip,
-                            styles.pipActive,
                             {
-                              borderColor: heatColor,
-                              shadowColor: plasmaAccent,
+                              backgroundColor: darkenForUnlit(heatColor),
+                              borderColor: darkenForUnlit(heatColor, 0.75),
                             },
-                            styles.pipGlow,
-                            activeGlowStyle,
                           ]}
                         />
+                        <View style={styles.pipReflection} />
                       </View>
-                    </Animated.View>
-                  ) : (
-                    <View style={styles.pipWrapper}>
-                      <View
-                        style={[
-                          styles.pip,
-                          {
-                            backgroundColor: darkenForUnlit(heatColor),
-                            borderColor: darkenForUnlit(heatColor, 0.75),
-                          },
-                        ]}
-                      />
-                      <View style={styles.pipReflection} />
                     </View>
                   )}
                 </View>
@@ -363,6 +369,22 @@ const styles = StyleSheet.create({
     height: layout.pipTouchSize,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bulbWithSocket: {
+    position: 'relative',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulbSocket: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#5a5a5a',
+    backgroundColor: 'transparent',
   },
   pipWrapper: {
     position: 'relative',

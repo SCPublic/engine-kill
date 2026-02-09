@@ -463,10 +463,17 @@ export default function HomeScreen({
                                   onPress={() => handleUnitPress(unit)}
                                 >
                                   <Card.Content>
-                                    <View style={styles.unitTitleRow}>
-                                      <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                                    <View style={styles.unitNameRow}>
+                                      <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
                                         {unit.name}
                                       </Text>
+                                    </View>
+                                    <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                                        .filter((n): n is string => !!n)
+                                        .join(' • ') || '—'}
+                                    </Text>
+                                    <View style={styles.unitTitleRow}>
                                       <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
                                         {getTitanTotalPoints(unit)} pts
                                       </Text>
@@ -518,11 +525,6 @@ export default function HomeScreen({
                                         accessibilityLabel={`Delete ${unit.name}`}
                                       />
                                     </View>
-                                    <Text variant="bodySmall" style={styles.unitWeapons}>
-                                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
-                                        .filter((n): n is string => !!n)
-                                        .join(' • ') || '—'}
-                                    </Text>
                                   </Card.Content>
                                 </Card>
                               ))
@@ -539,10 +541,17 @@ export default function HomeScreen({
                                     onLongPress={drag}
                                   >
                                     <Card.Content>
-                                      <View style={styles.unitTitleRow}>
-                                        <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                                      <View style={styles.unitNameRow}>
+                                        <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
                                           {unit.name}
                                         </Text>
+                                      </View>
+                                      <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                                          .filter((n): n is string => !!n)
+                                          .join(' • ') || '—'}
+                                      </Text>
+                                      <View style={styles.unitTitleRow}>
                                         <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
                                           {getTitanTotalPoints(unit)} pts
                                         </Text>
@@ -575,11 +584,6 @@ export default function HomeScreen({
                                           accessibilityLabel={`Delete ${unit.name}`}
                                         />
                                       </View>
-                                      <Text variant="bodySmall" style={styles.unitWeapons}>
-                                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
-                                          .filter((n): n is string => !!n)
-                                          .join(' • ') || '—'}
-                                      </Text>
                                     </Card.Content>
                                   </Card>
                                 )}
@@ -627,10 +631,13 @@ export default function HomeScreen({
                 onPress={() => handleUnitPress(unit)}
               >
                 <Card.Content>
-                  <View style={styles.unitTitleRow}>
-                    <Text variant="titleLarge" style={styles.unitTitle} numberOfLines={1}>
+                  <View style={styles.unitNameRow}>
+                    <Text variant="titleLarge" style={styles.unitTitleFullWidth} numberOfLines={1}>
                       {unit.name}
                     </Text>
+                  </View>
+                  <Text variant="bodyMedium" style={styles.textMuted}>Banner</Text>
+                  <View style={styles.unitTitleRow}>
                     <IconButton
                       icon="cog-outline"
                       size={18}
@@ -646,7 +653,6 @@ export default function HomeScreen({
                       accessibilityLabel={`Delete ${unit.name}`}
                     />
                   </View>
-                  <Text variant="bodyMedium" style={styles.textMuted}>Banner</Text>
                 </Card.Content>
               </Card>
             ))}
@@ -673,10 +679,17 @@ export default function HomeScreen({
                   onPress={() => handleUnitPress(unit)}
                 >
                   <Card.Content>
-                    <View style={styles.unitTitleRow}>
-                      <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                    <View style={styles.unitNameRow}>
+                      <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
                         {unit.name}
                       </Text>
+                    </View>
+                    <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                        .filter((n): n is string => !!n)
+                        .join(' • ') || '—'}
+                    </Text>
+                    <View style={styles.unitTitleRow}>
                       <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
                         {getTitanTotalPoints(unit)} pts
                       </Text>
@@ -728,11 +741,6 @@ export default function HomeScreen({
                         accessibilityLabel={`Delete ${unit.name}`}
                       />
                     </View>
-                    <Text variant="bodySmall" style={styles.unitWeapons}>
-                      {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
-                        .filter((n): n is string => !!n)
-                        .join(' • ') || '—'}
-                    </Text>
                   </Card.Content>
                 </Card>
               ))
@@ -753,10 +761,17 @@ export default function HomeScreen({
                     onLongPress={drag}
                   >
                     <Card.Content>
-                      <View style={styles.unitTitleRow}>
-                        <Text variant="titleMedium" style={styles.unitTitle} numberOfLines={1}>
+                      <View style={styles.unitNameRow}>
+                        <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
                           {unit.name}
                         </Text>
+                      </View>
+                      <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
+                          .filter((n): n is string => !!n)
+                          .join(' • ') || '—'}
+                      </Text>
+                      <View style={styles.unitTitleRow}>
                         <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
                           {getTitanTotalPoints(unit)} pts
                         </Text>
@@ -789,11 +804,6 @@ export default function HomeScreen({
                           accessibilityLabel={`Delete ${unit.name}`}
                         />
                       </View>
-                      <Text variant="bodySmall" style={styles.unitWeapons}>
-                        {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
-                          .filter((n): n is string => !!n)
-                          .join(' • ') || '—'}
-                      </Text>
                     </Card.Content>
                   </Card>
                 )}
@@ -1913,10 +1923,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     color: colors.textMuted,
   },
+  unitNameRow: {
+    width: '100%',
+    marginBottom: 2,
+  },
   unitTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 0,
   },
   manipleHeaderRow: {
     flexDirection: 'row',
@@ -1938,6 +1954,7 @@ const styles = StyleSheet.create({
   },
   unitWeapons: {
     marginTop: spacing.xs,
+    marginBottom: spacing.xs,
     color: colors.text,
   },
   textPrimary: {

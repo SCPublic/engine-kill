@@ -20,6 +20,9 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import { Audio } from 'expo-av';
+
+const HORN_SOUND = require('../../assets/titanhorn1.ogg');
 
 export default function UnitEditScreen({
   unitId,
@@ -47,6 +50,15 @@ export default function UnitEditScreen({
     if (!unit) return;
     setNameDraft(unit.name ?? '');
   }, [unit?.id, unit?.name]);
+
+  useEffect(() => {
+    void Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+  }, []);
 
   // Find template for armor rolls and critical effects — only use when it matches this unit's chassis
   const templates = unit?.unitType === 'titan' ? titanTemplates : bannerTemplates;
@@ -221,6 +233,19 @@ export default function UnitEditScreen({
     await updateVoidShieldByIndex(unitId, selectedIndex);
   };
 
+  const playHorn = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(HORN_SOUND, { shouldPlay: true });
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          void sound.unloadAsync();
+        }
+      });
+    } catch (e) {
+      console.warn('Horn sound failed to play:', e);
+    }
+  };
+
   const rightPanel = (
     <>
       {!!(template && template.specialRules && template.specialRules.length > 0) && (
@@ -244,6 +269,14 @@ export default function UnitEditScreen({
             onShieldChange={handleShieldChange}
           />
         </View>
+        <IconButton
+          icon="bullhorn"
+          size={24}
+          iconColor={colors.textMuted}
+          onPress={playHorn}
+          style={styles.hornButton}
+          accessibilityLabel="Play horn"
+        />
       </View>
     </>
   );
@@ -781,8 +814,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   reactorShieldRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
-    paddingTop: spacing.sm, // Reduced top padding to bring closer to special rules
+    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.panel,
@@ -792,6 +828,11 @@ const styles = StyleSheet.create({
   },
   reactorShieldContainer: {
     alignItems: 'flex-end',
+    flex: 1,
+  },
+  hornButton: {
+    marginTop: -4,
+    marginRight: -4,
   },
   damageSection: {
     marginTop: spacing.sm,
