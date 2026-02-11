@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
-import { Button, Card, IconButton, Modal, SegmentedButtons, Text as PaperText } from 'react-native-paper';
+import { Button, Card, IconButton, Modal, Text as PaperText } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useRoute, useNavigation } from '@react-navigation/native';
@@ -21,7 +21,6 @@ import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 import { TEMPLATE_ID_ALIASES } from '../utils/constants';
-import { storageService } from '../services/storageService';
 import { Audio } from 'expo-av';
 
 const HORN_SOUND = require('../../assets/titanhorn1.ogg');
@@ -45,21 +44,8 @@ export default function UnitEditScreen({
   const [weaponPage, setWeaponPage] = useState(0);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
   const [nameDraft, setNameDraft] = useState('');
-  const [warhornModalVisible, setWarhornModalVisible] = useState(false);
-  const [warhornRate, setWarhornRate] = useState(1);
-  const [warhornAdjustPitch, setWarhornAdjustPitch] = useState(true);
 
   const unit = state.units.find((u) => u.id === unitId);
-
-  // Load warhorn settings once on mount
-  useEffect(() => {
-    storageService.loadWarhornSettings().then((s) => {
-      if (s) {
-        setWarhornRate(s.rate);
-        setWarhornAdjustPitch(s.adjustPitch);
-      }
-    });
-  }, []);
 
   useEffect(() => {
     if (!unit) return;
@@ -84,6 +70,18 @@ export default function UnitEditScreen({
       : undefined);
   const templateMatchesUnit = Boolean(template && unit);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
+
+  const effectiveSpecialRules = useMemo(() => {
+    const chassis = template?.specialRules ?? [];
+    const traitRules = unit?.princepsTrait?.rules ?? [];
+    const upgradeTplList = upgradeTemplates ?? [];
+    const wargearRules = (unit?.upgrades ?? []).flatMap((u) => {
+      const rules = (u.rules?.length ? u.rules : upgradeTplList.find((t) => t.id === u.id)?.rules) ?? [];
+      return rules.map((r) => (u.name ? `${u.name}: ${r}` : r));
+    });
+    const combined = [...chassis, ...traitRules, ...wargearRules].filter((s) => s.trim().length > 0);
+    return combined;
+  }, [template?.specialRules, unit?.princepsTrait?.rules, unit?.upgrades, upgradeTemplates]);
 
   const unitManiple = useMemo(() => {
     if (!unit || unit.unitType !== 'titan') return undefined;
@@ -233,12 +231,7 @@ export default function UnitEditScreen({
 
   const playHorn = async () => {
     try {
-      const shouldCorrectPitch = !warhornAdjustPitch; // adjust duration = correct pitch (timestretch)
-      const { sound } = await Audio.Sound.createAsync(HORN_SOUND, {
-        shouldPlay: true,
-        rate: warhornRate,
-        shouldCorrectPitch,
-      });
+      const { sound } = await Audio.Sound.createAsync(HORN_SOUND, { shouldPlay: true });
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           void sound.unloadAsync();
@@ -247,17 +240,6 @@ export default function UnitEditScreen({
     } catch (e) {
       console.warn('Horn sound failed to play:', e);
     }
-  };
-
-  const applyWarhornRate = (delta: number) => {
-    const next = Math.max(0.5, Math.min(2, Math.round((warhornRate + delta) * 10) / 10));
-    setWarhornRate(next);
-    void storageService.saveWarhornSettings({ rate: next, adjustPitch: warhornAdjustPitch });
-  };
-
-  const applyWarhornAdjustPitch = (adjustPitch: boolean) => {
-    setWarhornAdjustPitch(adjustPitch);
-    void storageService.saveWarhornSettings({ rate: warhornRate, adjustPitch });
   };
 
   const rightPanel = (
@@ -387,51 +369,7 @@ export default function UnitEditScreen({
               style={styles.hornButton}
               accessibilityLabel="Play horn"
             />
-            <IconButton
-              icon="tune"
-              size={22}
-              iconColor={colors.textMuted}
-              onPress={() => setWarhornModalVisible(true)}
-              style={styles.hornButton}
-              accessibilityLabel="Customize warhorn"
-            />
           </View>
-          <Modal
-            visible={warhornModalVisible}
-            onDismiss={() => setWarhornModalVisible(false)}
-            contentContainerStyle={styles.warhornModal}
-          >
-            <PaperText variant="titleMedium" style={styles.warhornModalTitle}>
-              Warhorn
-            </PaperText>
-            <PaperText variant="bodySmall" style={styles.textMuted}>
-              {warhornAdjustPitch
-                ? 'Pitch: lower value = deeper, higher = brighter.'
-                : 'Duration: lower value = longer blast, higher = shorter.'}
-            </PaperText>
-            <SegmentedButtons
-              value={warhornAdjustPitch ? 'pitch' : 'duration'}
-              onValueChange={(v) => applyWarhornAdjustPitch(v === 'pitch')}
-              buttons={[
-                { value: 'pitch', label: 'Pitch' },
-                { value: 'duration', label: 'Duration' },
-              ]}
-              style={styles.warhornSegmented}
-            />
-            <View style={styles.warhornRateRow}>
-              <IconButton icon="minus" size={20} onPress={() => applyWarhornRate(-0.1)} accessibilityLabel="Decrease" />
-              <PaperText variant="titleMedium" style={styles.warhornRateValue}>
-                {warhornRate.toFixed(1)}
-              </PaperText>
-              <IconButton icon="plus" size={20} onPress={() => applyWarhornRate(0.1)} accessibilityLabel="Increase" />
-            </View>
-            <Button mode="contained" onPress={playHorn} icon="play" style={styles.warhornPlayButton}>
-              Play
-            </Button>
-            <Button mode="outlined" onPress={() => setWarhornModalVisible(false)}>
-              Done
-            </Button>
-          </Modal>
           {template?.scale != null && template?.scaleName ? (
             <Text style={styles.subtitle} numberOfLines={1}>
               SCALE: {template.scale} ({template.scaleName})
@@ -447,9 +385,9 @@ export default function UnitEditScreen({
         <View style={styles.statsSection}>
           <StatsPanel unit={unit} style={styles.statsPanel} />
         </View>
-        {!!(template?.specialRules && template.specialRules.length > 0) && (
+        {effectiveSpecialRules.length > 0 && (
           <View style={styles.specialRulesRow}>
-            <SpecialRulesDisplay rules={template.specialRules} />
+            <SpecialRulesDisplay rules={effectiveSpecialRules} />
           </View>
         )}
         {rightPanel}
@@ -865,37 +803,6 @@ const styles = StyleSheet.create({
   hornButton: {
     marginTop: -4,
     marginRight: -4,
-  },
-  warhornModal: {
-    backgroundColor: colors.panel,
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  warhornModalTitle: {
-    marginBottom: spacing.sm,
-    color: colors.text,
-  },
-  warhornSegmented: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  warhornRateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  warhornRateValue: {
-    minWidth: 48,
-    textAlign: 'center',
-    color: colors.text,
-  },
-  warhornPlayButton: {
-    marginBottom: spacing.sm,
   },
   damageSection: {
     marginTop: spacing.sm,

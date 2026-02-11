@@ -1,11 +1,5 @@
-import React from 'react';
-import {
-  Image,
-  ImageBackground,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
+import React, { useState } from 'react';
+import { Image, StyleSheet, View, ViewStyle } from 'react-native';
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
@@ -13,19 +7,23 @@ interface ScreenWrapperProps {
 }
 
 export default function ScreenWrapper({ children, style }: ScreenWrapperProps) {
+  const [textureError, setTextureError] = useState(false);
+
   return (
     <View style={[styles.container, style]}>
       {/* Layer 1: Pure black background */}
       <View style={styles.background} />
 
-      {/* Layer 2: Texture overlay */}
-      <Image
-        source={require('../../assets/images/texture-overlay.png')}
-        style={styles.textureLayer}
-        resizeMode="cover"
-        onError={(e) => console.error('Texture overlay failed to load:', e.nativeEvent.error)}
-        onLoad={() => console.log('Texture overlay loaded successfully')}
-      />
+      {/* Layer 2: Texture overlay (optional; hide after load error to avoid console spam) */}
+      {!textureError && (
+        <Image
+          source={require('../../assets/images/texture-overlay.png')}
+          style={styles.textureLayer}
+          resizeMode="cover"
+          onError={() => setTextureError(true)}
+          onLoad={() => {}}
+        />
+      )}
 
       {/* Layer 3: Metal frame border (disabled) */}
       {/* <ImageBackground

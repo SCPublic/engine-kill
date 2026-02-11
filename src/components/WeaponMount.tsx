@@ -127,7 +127,7 @@ export default function WeaponMount({
         </View>
       )}
 
-      {/* Disabled overlay (matches reference image conceptually; exact repair text will be added when provided) */}
+      {/* Disabled overlay: repair roll only when present in weapon-metadata (no fallback; missing data should be fixed in titan-data) */}
       {!!weapon && isWeaponDisabled && (
         <View pointerEvents="none" style={styles.weaponDisabledOverlay}>
           <View style={styles.weaponDisabledOverlayInner}>
@@ -142,7 +142,9 @@ export default function WeaponMount({
 
             <View style={styles.weaponDisabledOverlayBottom}>
               <Text style={styles.weaponDisabledRepairText} numberOfLines={1}>
-                {weapon.repairRoll ? `Repair Weapon (${weapon.repairRoll})` : 'Repair Weapon'}
+                {weapon.repairRoll != null && weapon.repairRoll !== ''
+                  ? `Repair Weapon (${weapon.repairRoll})`
+                  : 'Repair Weapon'}
               </Text>
               <View style={styles.weaponDisabledRolls}>
                 {disabledRollLines.slice(0, 2).map((line, i) => (
@@ -299,6 +301,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     paddingHorizontal: spacing.lg,
+    backgroundColor: '#2b0b0b',
   },
   weaponDisabledOverlayInner: {
     flex: 1,
@@ -311,7 +314,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     textAlign: 'center',
-    opacity: 0.95,
   },
   weaponDisabledOverlayCenter: {
     alignItems: 'center',
@@ -323,8 +325,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.5,
     textAlign: 'center',
-    textShadow: '0px 1px 10px #7a0000',
-    opacity: 0.92,
+    textShadowColor: '#7a0000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   weaponDisabledOverlayBottom: {
     alignItems: 'center',
@@ -334,7 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
-    opacity: 0.95,
     marginBottom: 6,
   },
   weaponDisabledRolls: {
@@ -345,7 +347,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    opacity: 0.9,
   },
 });
 

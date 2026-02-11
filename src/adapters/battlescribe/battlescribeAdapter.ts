@@ -756,6 +756,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
   const warnings: string[] = [];
 
   const overrides = await loadTitanDataOverrides(source.baseUrl);
+
   if (Object.keys(overrides.damageTracks).length === 0) {
     warnings.push(
       'Damage tracks from titan-data could not be loaded. Armour rolls and pips per location will be missing. Load engine-kill/damage-tracks.json from titan-data (check network and retry).'

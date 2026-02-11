@@ -108,7 +108,6 @@ export async function loadTitanDataOverrides(baseUrl: string): Promise<TitanData
 
   cachePromiseBaseUrl = base;
   cachePromise = (async () => {
-    console.log('[titan-data] Loading overrides from:', base);
     const bust = `?_=${Date.now()}`;
     const damageUrl = `${prefix}damage-tracks.json${bust}`;
     const critUrl = `${prefix}critical-effects.json${bust}`;
