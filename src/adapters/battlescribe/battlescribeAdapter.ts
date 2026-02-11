@@ -201,6 +201,8 @@ function isLikelyTitanChassis(se: XmlNode, chars: Record<string, string>): boole
   if (name.includes('stratagem')) return false;
   if (name.includes('upgrade')) return false;
   if (name.includes('wargear')) return false;
+  // BSData "Great Crusade Titans" is a stratagem/unit, not a physical chassis.
+  if (name.includes('great crusade')) return false;
   // Common non-chassis entries that can still be typed as "unit" in BSData
   if (name.includes('infantry')) return false;
   if (name.includes('portion')) return false;
@@ -473,6 +475,19 @@ function parsePointsFromSelectionEntry(selectionEntry: XmlNode): number | undefi
   return undefined;
 }
 
+/** Extract rule text from a selectionEntry (e.g. titan chassis). Uses <rules><rule><description> or rule name + description. */
+function getRulesFromSelectionEntry(selectionEntry: XmlNode): string[] {
+  const ruleNodes = findAll(selectionEntry, (n) => n.name === 'rule');
+  const rules: string[] = [];
+  for (const r of ruleNodes) {
+    const desc = (childText(r, 'description') ?? r.text?.trim() ?? '').trim();
+    if (!desc) continue;
+    const rn = (r.attributes.name || '').trim();
+    rules.push(rn ? `${rn}: ${desc}` : desc);
+  }
+  return rules;
+}
+
 function getCharacteristicMap(selectionEntry: XmlNode): Record<string, string> {
   // Find characteristics for any profile under this selectionEntry.
   // We keep a flat map by characteristic name; later profiles can overwrite earlier ones.
@@ -649,7 +664,8 @@ function getChassisOverride(fromTitanData: ChassisOverrideJson | undefined): Cha
     fromTitanData &&
     (fromTitanData.plasmaReactorMax !== undefined ||
       fromTitanData.voidShieldsMax !== undefined ||
-      (fromTitanData.voidShieldSaves && fromTitanData.voidShieldSaves.length > 0));
+      (fromTitanData.voidShieldSaves && fromTitanData.voidShieldSaves.length > 0) ||
+      (fromTitanData.specialRules && fromTitanData.specialRules.length > 0));
   return hasTitanData ? fromTitanData : undefined;
 }
 
@@ -771,6 +787,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     weapons: WeaponTemplate[];
     defaultLeftWeaponId?: string;
     defaultRightWeaponId?: string;
+    specialRules: string[];
   };
   const chassisById = new Map<string, ChassisEntry>();
 
@@ -798,6 +815,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
 
       const points = parsePointsFromSelectionEntry(se);
       const max = extractChassisMaxValues(chars);
+      const specialRules = getRulesFromSelectionEntry(se);
 
       const { links, defaultLeftWeaponId, defaultRightWeaponId } = collectWeaponLinksAndDefaults(se, byId);
       const weapons: WeaponTemplate[] = [];
@@ -816,7 +834,11 @@ export async function loadAllTitanTemplatesFromBattleScribe(
       weaponById.forEach((w) => weapons.push(w));
 
       if (existing && key === id) {
-        // Merge: keep best-known values
+        // Merge: keep best-known values; merge special rules (BSData may add more from another file)
+        const mergedRules =
+          existing.specialRules.length > 0 || specialRules.length > 0
+            ? [...new Set([...existing.specialRules, ...specialRules])]
+            : [];
         chassisById.set(key, {
           id: key,
           name: existing.name || displayName,
@@ -830,6 +852,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
           weapons: existing.weapons.length ? existing.weapons : weapons,
           defaultLeftWeaponId: existing.defaultLeftWeaponId ?? defaultLeftWeaponId,
           defaultRightWeaponId: existing.defaultRightWeaponId ?? defaultRightWeaponId,
+          specialRules: mergedRules,
         });
       } else {
         chassisById.set(key, {
@@ -841,6 +864,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
           weapons,
           defaultLeftWeaponId,
           defaultRightWeaponId,
+          specialRules,
         });
       }
     }
@@ -857,6 +881,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
   for (const c of sorted) {
     const chassisKey = getDamageTrackKey(c.id, overrides.chassisAliases);
     const override = getChassisOverride(overrides.chassisOverrides[chassisKey]);
+    const overrideSpecialRules = override?.specialRules ?? [];
     const effectiveVoidShieldsMax = c.max.voidShieldsMax ?? override?.voidShieldsMax;
     const effectivePlasmaReactorMax = c.max.plasmaReactorMax ?? override?.plasmaReactorMax;
     const effectiveMaxHeat = c.max.maxHeat ?? (effectivePlasmaReactorMax !== undefined ? effectivePlasmaReactorMax : undefined);
@@ -868,7 +893,8 @@ export async function loadAllTitanTemplatesFromBattleScribe(
     if (effectiveMaxHeat === undefined && effectivePlasmaReactorMax === undefined) missing.push('maxHeat');
     if (missing.length) missingMaxData.push({ id: c.id, name: c.name, missing });
 
-    const base = defaultPlaceholderTitanTemplate(c.id, c.name);
+    // Use canonical chassis key as template id so override data (e.g. specialRules) applies and units resolve consistently.
+    const base = defaultPlaceholderTitanTemplate(chassisKey, c.name);
     const damageEntry = overrides.damageTracks[chassisKey];
     if (!damageEntry) {
       warnings.push(
@@ -886,10 +912,21 @@ export async function loadAllTitanTemplatesFromBattleScribe(
         : [];
     const hasCarapaceWeapon = c.weapons.some((w) => w.mountType === 'carapace');
 
+    let mergedSpecialRules =
+      c.specialRules.length > 0 || overrideSpecialRules.length > 0
+        ? [...new Set([...c.specialRules, ...overrideSpecialRules])]
+        : [];
+    // Fallback: Warlord always gets Ardex Defensor rule (paper command terminals show it).
+    const ARDEX_DEFENSOR_RULE =
+      'ARDEX DEFENSOR CANNON: When the Titan is activated in the Combat phase, each enemy unit that is within its Front or Rear arc, and within 6", suffers D3 Strength 5 hits.';
+    if (chassisKey === 'warlord' && !mergedSpecialRules.some((r) => r.includes('ARDEX DEFENSOR'))) {
+      mergedSpecialRules = [...mergedSpecialRules, ARDEX_DEFENSOR_RULE];
+    }
     templates.push({
       ...base,
       name: c.name || base.name,
       ...(c.points !== undefined ? { basePoints: c.points } : {}),
+      ...(mergedSpecialRules.length > 0 ? { specialRules: mergedSpecialRules } : {}),
       defaultStats: {
         ...baseStats,
         ...(effectiveVoidShieldsMax !== undefined ? { voidShields: { max: effectiveVoidShieldsMax } } : {}),
@@ -1535,9 +1572,6 @@ export async function loadUpgradeTemplatesFromBattleScribe(
     const res = await fetch(url);
     if (!res.ok) {
       warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'battlescribeAdapter.ts:loadUpgrades',message:'fetch failed',data:{file,status:res.status,url},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       continue;
     }
     xmlStrings.push(await res.text());
@@ -1593,9 +1627,6 @@ export async function loadUpgradeTemplatesFromBattleScribe(
 
   upgrades.sort((a, b) => a.name.localeCompare(b.name));
   if (upgrades.length === 0) warnings.push('No wargear upgrades were resolved from BattleScribe data.');
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'battlescribeAdapter.ts:loadUpgrades',message:'result',data:{upgradesCount:upgrades.length,xmlCount:xmlStrings.length,warnings},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return { upgrades, warnings };
 }
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -20,6 +21,11 @@ function colorToRgb(color: string): RGB {
   const m = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
   if (m) return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
   return { r: 255, g: 255, b: 255 };
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const { r, g, b } = colorToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function lerp(a: number, b: number, t: number) {
@@ -301,12 +307,16 @@ export default function VoidShieldDisplay({
                             style={[
                               styles.pip,
                               { backgroundColor: pipFillActive, borderColor: pipBorder },
-                              {
-                                shadowColor: isDestroyed ? destroyedAccent : SHIELD_COLORS.strong,
-                                shadowOpacity: isDestroyed ? 0.6 : 0.4 * glowStrength,
-                                shadowRadius: isDestroyed ? 10 : 8,
-                                elevation: isDestroyed ? 6 : Math.max(2, Math.round(6 * glowStrength)),
-                              },
+                              Platform.OS === 'web'
+                                ? {
+                                    boxShadow: `0 0 ${isDestroyed ? 10 : 8}px ${hexToRgba(isDestroyed ? destroyedAccent : SHIELD_COLORS.strong, isDestroyed ? 0.6 : 0.4 * glowStrength)}`,
+                                  }
+                                : {
+                                    shadowColor: isDestroyed ? destroyedAccent : SHIELD_COLORS.strong,
+                                    shadowOpacity: isDestroyed ? 0.6 : 0.4 * glowStrength,
+                                    shadowRadius: isDestroyed ? 10 : 8,
+                                    elevation: isDestroyed ? 6 : Math.max(2, Math.round(6 * glowStrength)),
+                                  },
                             ]}
                           />
                         </View>
@@ -391,7 +401,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#666',
     backgroundColor: '#2a2a2a',
-    shadowOffset: { width: 0, height: 0 },
+    ...(Platform.OS !== 'web' && { shadowOffset: { width: 0, height: 0 } }),
   },
   pipClickable: {
     borderColor: '#888',

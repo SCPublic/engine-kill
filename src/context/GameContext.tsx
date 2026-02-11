@@ -77,10 +77,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             }
           : bg
       );
-      const updated = nextBattlegroups.find((bg) => bg.id === id);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:UPDATE_BATTLEGROUP',message:'reducer after update',data:{id,payloadAllegiance:allegiance,updatedAllegiance:updated?.allegiance,battlegroupCount:nextBattlegroups.length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       return { ...state, battlegroups: nextBattlegroups };
     }
     case 'DELETE_BATTLEGROUP':
@@ -165,19 +161,13 @@ interface GameContextType {
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  console.log('GameProvider: Component function called');
   const [state, dispatch] = useReducer(gameReducer, initialState);
-  console.log('GameProvider: useReducer initialized, state.isLoading:', typeof state.isLoading, state.isLoading);
   const { manipleTemplates } = useManipleTemplates();
 
   // Initialize: Load player ID and units
   useEffect(() => {
     async function initialize() {
       try {
-        console.log('GameProvider: Starting initialization');
-        // Clear all storage for fresh start
-        // await storageService.clearAll(); // Disabled for production
-        console.log('GameProvider: Storage cleared');
         dispatch({ type: 'SET_LOADING', payload: true });
         
         // Load or create player ID
@@ -369,16 +359,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
           await storageService.saveManiples(migratedManiplesWithBattlegroup);
         }
 
-        console.log('GameProvider: About to dispatch LOAD_UNITS with', migratedUnitsWithBattlegroup.length, 'units');
         dispatch({ type: 'LOAD_UNITS', payload: migratedUnitsWithBattlegroup });
         dispatch({ type: 'LOAD_MANIPLES', payload: migratedManiplesWithBattlegroup });
-
-        console.log('GameProvider: Initialization complete');
       } catch (error) {
         console.error('Error initializing game:', error);
         console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
       } finally {
-        console.log('GameProvider: Setting loading to false');
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     }
@@ -425,9 +411,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     updates: { name?: string; allegiance?: BattlegroupAllegiance; reinforcementOrder?: string[] }
   ): Promise<void> => {
     if (updates.name !== undefined && !updates.name.trim()) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:updateBattlegroup',message:'called with',data:{battlegroupId,updatesAllegiance:updates.allegiance},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     dispatch({ type: 'UPDATE_BATTLEGROUP', payload: { id: battlegroupId, ...updates } });
     const next = state.battlegroups.map((bg) => {
       if (bg.id !== battlegroupId) return bg;
@@ -438,10 +421,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         ...(updates.reinforcementOrder !== undefined && { reinforcementOrder: updates.reinforcementOrder }),
       };
     });
-    const savedBg = next.find((bg) => bg.id === battlegroupId);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'GameContext.tsx:updateBattlegroup',message:'next to save',data:{savedAllegiance:savedBg?.allegiance},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     await storageService.saveBattlegroups(next);
 
     // When allegiance changes, clear legion selections on maniples and wargear on units in this battlegroup.
@@ -824,7 +803,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       isLoading: !!state.isLoading, // Use !! instead of Boolean()
       units: safeUnits,
     };
-    console.log('GameProvider: About to return Provider, safeState.isLoading:', typeof safeState.isLoading, safeState.isLoading);
 
   return (
     <GameContext.Provider

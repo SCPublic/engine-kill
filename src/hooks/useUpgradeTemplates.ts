@@ -29,17 +29,11 @@ export function useUpgradeTemplates() {
         if (cancelled) return;
         setUpgradeTemplates(res.upgrades);
         setWarnings(res.warnings);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUpgradeTemplates.ts',message:'loaded',data:{count:res.upgrades.length,warningsCount:res.warnings.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
       } catch (e) {
         if (cancelled) return;
         console.warn('[BattleScribe] Failed to load upgrade templates.', e);
         setUpgradeTemplates([]);
         setWarnings(['Failed to load BattleScribe upgrade templates.']);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUpgradeTemplates.ts',message:'load error',data:{error:String(e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
       } finally {
         if (!cancelled) setIsLoading(false);
       }

@@ -309,7 +309,6 @@ export default function HomeScreen({
     );
   }
 
-  console.log('HomeScreen rendering, units:', battlegroupUnits.length);
   const activeBattlegroupName = state.activeBattlegroupId
     ? state.battlegroups.find((bg) => bg.id === state.activeBattlegroupId)?.name
     : undefined;

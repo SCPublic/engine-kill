@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
-import { Button, Card, IconButton, Modal, Text as PaperText } from 'react-native-paper';
+import { Button, Card, IconButton, Modal, SegmentedButtons, Text as PaperText } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useRoute, useNavigation } from '@react-navigation/native';
@@ -20,6 +20,8 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import { TEMPLATE_ID_ALIASES } from '../utils/constants';
+import { storageService } from '../services/storageService';
 import { Audio } from 'expo-av';
 
 const HORN_SOUND = require('../../assets/titanhorn1.ogg');
@@ -43,8 +45,21 @@ export default function UnitEditScreen({
   const [weaponPage, setWeaponPage] = useState(0);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  const [warhornModalVisible, setWarhornModalVisible] = useState(false);
+  const [warhornRate, setWarhornRate] = useState(1);
+  const [warhornAdjustPitch, setWarhornAdjustPitch] = useState(true);
 
   const unit = state.units.find((u) => u.id === unitId);
+
+  // Load warhorn settings once on mount
+  useEffect(() => {
+    storageService.loadWarhornSettings().then((s) => {
+      if (s) {
+        setWarhornRate(s.rate);
+        setWarhornAdjustPitch(s.adjustPitch);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!unit) return;
@@ -60,10 +75,14 @@ export default function UnitEditScreen({
     });
   }, []);
 
-  // Find template for armor rolls and critical effects — only use when it matches this unit's chassis
+  // Find template for armor rolls and critical effects; resolve legacy BS template ids via alias
   const templates = unit?.unitType === 'titan' ? titanTemplates : bannerTemplates;
-  const template = templates.find((t) => t.id === unit?.templateId);
-  const templateMatchesUnit = Boolean(template && unit && template.id === unit.templateId);
+  const template =
+    templates.find((t) => t.id === unit?.templateId) ??
+    (unit?.templateId && TEMPLATE_ID_ALIASES[unit.templateId]
+      ? templates.find((t) => t.id === TEMPLATE_ID_ALIASES[unit.templateId])
+      : undefined);
+  const templateMatchesUnit = Boolean(template && unit);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
 
   const unitManiple = useMemo(() => {
@@ -76,29 +95,8 @@ export default function UnitEditScreen({
 
   const unitBattlegroup = useMemo(() => {
     const found = unit?.battlegroupId ? state.battlegroups.find((bg) => bg.id === unit.battlegroupId) : undefined;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UnitEditScreen.tsx:unitBattlegroup',message:'useMemo result',data:{unitBattlegroupId:unit?.battlegroupId,foundAllegiance:found?.allegiance,battlegroupCount:state.battlegroups.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
     return found;
   }, [state.battlegroups, unit?.battlegroupId]);
-
-  const totalPoints = useMemo(() => {
-    if (!unit || unit.unitType !== 'titan') return 0;
-    const base = template?.basePoints ?? 0;
-    const weapons =
-      (unit.leftWeapon?.points ?? 0) +
-      (unit.rightWeapon?.points ?? 0) +
-      (unit.carapaceWeapon?.points ?? 0);
-    const upgrades = (unit.upgrades ?? []).reduce((sum, u) => sum + (u.points ?? 0), 0);
-    return base + weapons + upgrades;
-  }, [
-    template?.basePoints,
-    unit?.carapaceWeapon?.points,
-    unit?.leftWeapon?.points,
-    unit?.rightWeapon?.points,
-    unit?.unitType,
-    unit?.upgrades,
-  ]);
 
   // Small-slice BSData integration: Warhound weapon cards.
   useEffect(() => {
@@ -235,7 +233,12 @@ export default function UnitEditScreen({
 
   const playHorn = async () => {
     try {
-      const { sound } = await Audio.Sound.createAsync(HORN_SOUND, { shouldPlay: true });
+      const shouldCorrectPitch = !warhornAdjustPitch; // adjust duration = correct pitch (timestretch)
+      const { sound } = await Audio.Sound.createAsync(HORN_SOUND, {
+        shouldPlay: true,
+        rate: warhornRate,
+        shouldCorrectPitch,
+      });
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           void sound.unloadAsync();
@@ -246,14 +249,19 @@ export default function UnitEditScreen({
     }
   };
 
+  const applyWarhornRate = (delta: number) => {
+    const next = Math.max(0.5, Math.min(2, Math.round((warhornRate + delta) * 10) / 10));
+    setWarhornRate(next);
+    void storageService.saveWarhornSettings({ rate: next, adjustPitch: warhornAdjustPitch });
+  };
+
+  const applyWarhornAdjustPitch = (adjustPitch: boolean) => {
+    setWarhornAdjustPitch(adjustPitch);
+    void storageService.saveWarhornSettings({ rate: warhornRate, adjustPitch });
+  };
+
   const rightPanel = (
     <>
-      {!!(template && template.specialRules && template.specialRules.length > 0) && (
-        <View style={styles.specialRulesRow}>
-          <SpecialRulesDisplay rules={template.specialRules} />
-        </View>
-      )}
-
       <View style={styles.reactorShieldRow}>
         <View style={styles.reactorShieldContainer}>
           <PlasmaReactorDisplay
@@ -269,14 +277,6 @@ export default function UnitEditScreen({
             onShieldChange={handleShieldChange}
           />
         </View>
-        <IconButton
-          icon="bullhorn"
-          size={24}
-          iconColor={colors.textMuted}
-          onPress={playHorn}
-          style={styles.hornButton}
-          accessibilityLabel="Play horn"
-        />
       </View>
     </>
   );
@@ -379,22 +379,64 @@ export default function UnitEditScreen({
               blurOnSubmit
               numberOfLines={1}
             />
+            <IconButton
+              icon="bullhorn"
+              size={24}
+              iconColor={colors.textMuted}
+              onPress={playHorn}
+              style={styles.hornButton}
+              accessibilityLabel="Play horn"
+            />
+            <IconButton
+              icon="tune"
+              size={22}
+              iconColor={colors.textMuted}
+              onPress={() => setWarhornModalVisible(true)}
+              style={styles.hornButton}
+              accessibilityLabel="Customize warhorn"
+            />
           </View>
-          {unit?.unitType === 'titan' && template ? (
-            <>
-              <View style={styles.chassisBar}>
-                <Text style={styles.chassisBarText}>
-                  CHASSIS: {template.name} ({unit.templateId})
-                </Text>
-              </View>
-            </>
+          <Modal
+            visible={warhornModalVisible}
+            onDismiss={() => setWarhornModalVisible(false)}
+            contentContainerStyle={styles.warhornModal}
+          >
+            <PaperText variant="titleMedium" style={styles.warhornModalTitle}>
+              Warhorn
+            </PaperText>
+            <PaperText variant="bodySmall" style={styles.textMuted}>
+              {warhornAdjustPitch
+                ? 'Pitch: lower value = deeper, higher = brighter.'
+                : 'Duration: lower value = longer blast, higher = shorter.'}
+            </PaperText>
+            <SegmentedButtons
+              value={warhornAdjustPitch ? 'pitch' : 'duration'}
+              onValueChange={(v) => applyWarhornAdjustPitch(v === 'pitch')}
+              buttons={[
+                { value: 'pitch', label: 'Pitch' },
+                { value: 'duration', label: 'Duration' },
+              ]}
+              style={styles.warhornSegmented}
+            />
+            <View style={styles.warhornRateRow}>
+              <IconButton icon="minus" size={20} onPress={() => applyWarhornRate(-0.1)} accessibilityLabel="Decrease" />
+              <PaperText variant="titleMedium" style={styles.warhornRateValue}>
+                {warhornRate.toFixed(1)}
+              </PaperText>
+              <IconButton icon="plus" size={20} onPress={() => applyWarhornRate(0.1)} accessibilityLabel="Increase" />
+            </View>
+            <Button mode="contained" onPress={playHorn} icon="play" style={styles.warhornPlayButton}>
+              Play
+            </Button>
+            <Button mode="outlined" onPress={() => setWarhornModalVisible(false)}>
+              Done
+            </Button>
+          </Modal>
+          {template?.scale != null && template?.scaleName ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              SCALE: {template.scale} ({template.scaleName})
+            </Text>
           ) : null}
-          <Text style={styles.subtitle} numberOfLines={3}>
-            {template?.scale && template?.scaleName
-              ? `SCALE: ${template.scale} (${template.scaleName}) • `
-              : ''}
-            {totalPoints} POINTS
-          </Text>
           {unit?.unitType === 'titan' && !templateMatchesUnit ? (
             <Text style={styles.chassisMismatchWarning}>
               No template loaded for chassis "{unit.templateId}". Damage tracks and armour may be wrong. Refresh data on the home screen and reopen.
@@ -405,6 +447,11 @@ export default function UnitEditScreen({
         <View style={styles.statsSection}>
           <StatsPanel unit={unit} style={styles.statsPanel} />
         </View>
+        {!!(template?.specialRules && template.specialRules.length > 0) && (
+          <View style={styles.specialRulesRow}>
+            <SpecialRulesDisplay rules={template.specialRules} />
+          </View>
+        )}
         {rightPanel}
 
         {/* Damage Tracks - Use template for max (so chassis stats are correct); unit for current/criticals */}
@@ -766,21 +813,6 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
-  chassisBar: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: 'rgba(0, 80, 20, 0.6)',
-    borderLeftWidth: 4,
-    borderLeftColor: '#009821',
-    minHeight: 28,
-    justifyContent: 'center',
-  },
-  chassisBarText: {
-    color: '#9dffb2',
-    fontSize: fontSize.sm,
-    fontFamily: 'RobotoMono_700Bold',
-  },
   subtitle: {
     color: '#9AFCAF',
     fontSize: fontSize.md,
@@ -833,6 +865,37 @@ const styles = StyleSheet.create({
   hornButton: {
     marginTop: -4,
     marginRight: -4,
+  },
+  warhornModal: {
+    backgroundColor: colors.panel,
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  warhornModalTitle: {
+    marginBottom: spacing.sm,
+    color: colors.text,
+  },
+  warhornSegmented: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  warhornRateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  warhornRateValue: {
+    minWidth: 48,
+    textAlign: 'center',
+    color: colors.text,
+  },
+  warhornPlayButton: {
+    marginBottom: spacing.sm,
   },
   damageSection: {
     marginTop: spacing.sm,

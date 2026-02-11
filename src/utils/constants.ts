@@ -25,6 +25,17 @@ export const ENGINE_KILL_COMMITS_API_URL =
 /** Data source used by the app. Change this to switch between BSData and titan-data. */
 export const DEFAULT_DATA_BASE_URL = TITAN_DATA_BASE_URL;
 
+/**
+ * Legacy template ids (BattleScribe selectionEntry ids) → canonical chassis id.
+ * Used so units saved with BS ids still resolve to the correct template (e.g. Warhound special rules).
+ */
+export const TEMPLATE_ID_ALIASES: Record<string, string> = {
+  'bs:3ad7-cd10-8d6e-8c2e': 'warhound',
+  'bs:9ff1-81bc-203d-620c': 'reaver',
+  'bs:dfeb-83af-7b26-622a': 'warlord',
+  'bs:76b8-ecdb-cbf6-0c45': 'dire-wolf',
+};
+
 export const STORAGE_KEYS = {
   UNITS: '@engine_kill:units',
   MANIPLES: '@engine_kill:maniples',
@@ -36,6 +47,7 @@ export const STORAGE_KEYS = {
   ACTIVE_BATTLEGROUP_ID: '@engine_kill:active_roster_id',
   PLAYER_ID: '@engine_kill:player_id',
   PLAYER_NAME: '@engine_kill:player_name',
+  WARHORN_SETTINGS: '@engine_kill:warhorn_settings',
 };
 
 export const CONTROL_TYPES = {

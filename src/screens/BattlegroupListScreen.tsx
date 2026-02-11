@@ -102,9 +102,6 @@ export default function BattlegroupListScreen() {
     if (!renameId) return;
     const trimmed = renameName.trim();
     if (!trimmed) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/ac455864-a4a0-4c3f-b63e-cc80f7299a14',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BattlegroupListScreen.tsx:submitRename',message:'submitting',data:{renameId,renameAllegiance},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     await updateBattlegroup(renameId, { name: trimmed, allegiance: renameAllegiance });
     setIsRenameOpen(false);
     setRenameId(null);

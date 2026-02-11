@@ -208,6 +208,29 @@ export const storageService = {
     }
   },
 
+  // Warhorn customization (pitch / duration via playback rate)
+  async saveWarhornSettings(settings: { rate: number; adjustPitch: boolean }): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.WARHORN_SETTINGS, JSON.stringify(settings));
+    } catch (error) {
+      console.error('Error saving warhorn settings:', error);
+    }
+  },
+
+  async loadWarhornSettings(): Promise<{ rate: number; adjustPitch: boolean } | null> {
+    try {
+      const json = await AsyncStorage.getItem(STORAGE_KEYS.WARHORN_SETTINGS);
+      if (!json) return null;
+      const raw = JSON.parse(json);
+      const rate = typeof raw?.rate === 'number' ? Math.max(0.5, Math.min(2, raw.rate)) : 1;
+      const adjustPitch = typeof raw?.adjustPitch === 'boolean' ? raw.adjustPitch : true;
+      return { rate, adjustPitch };
+    } catch (error) {
+      console.error('Error loading warhorn settings:', error);
+      return null;
+    }
+  },
+
   // Clear all storage (for debugging)
   async clearAll(): Promise<void> {
     try {
@@ -218,6 +241,7 @@ export const storageService = {
         STORAGE_KEYS.ACTIVE_BATTLEGROUP_ID,
         STORAGE_KEYS.PLAYER_ID,
         STORAGE_KEYS.PLAYER_NAME,
+        STORAGE_KEYS.WARHORN_SETTINGS,
       ]);
       console.log('All storage cleared');
     } catch (error) {

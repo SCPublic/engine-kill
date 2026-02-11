@@ -97,8 +97,10 @@ export const unitService = {
     location: 'head' | 'body' | 'legs',
     value: number
   ): Unit {
-    const max = unit.damage[location].max;
-    const newValue = Math.max(1, Math.min(value, max)); // Minimum is 1, not 0
+    const currentMax = unit.damage[location].max;
+    // Allow value even if it exceeds stored max (template may have more pips); expand stored max so it persists
+    const newValue = Math.max(1, value);
+    const newMax = Math.max(currentMax, newValue);
     return {
       ...unit,
       damage: {
@@ -106,6 +108,7 @@ export const unitService = {
         [location]: {
           ...unit.damage[location],
           current: newValue,
+          max: newMax,
         },
       },
     };

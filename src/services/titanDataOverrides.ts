@@ -9,6 +9,8 @@ export type ChassisOverrideJson = {
   plasmaReactorMax?: number;
   voidShieldsMax?: number;
   voidShieldSaves?: string[];
+  /** Special rules text for this chassis (e.g. Squadron). BSData often omits these on chassis; titan-data can supply them. */
+  specialRules?: string[];
 };
 
 /** Armor roll ranges in titan-data (direct/devastating/critical). Accepts legacy "hitTable" keys for backward compat. */
@@ -101,11 +103,12 @@ export async function loadTitanDataOverrides(baseUrl: string): Promise<TitanData
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const prefix = `${base}${ENGINE_KILL_PATH}`;
 
-  if (cached && cachedBaseUrl === base) return cached;
+  // Only deduplicate in-flight requests; do not cache result so titan-data changes are seen after refresh.
   if (cachePromise && cachePromiseBaseUrl === base) return cachePromise;
 
   cachePromiseBaseUrl = base;
   cachePromise = (async () => {
+    console.log('[titan-data] Loading overrides from:', base);
     const bust = `?_=${Date.now()}`;
     const damageUrl = `${prefix}damage-tracks.json${bust}`;
     const critUrl = `${prefix}critical-effects.json${bust}`;
@@ -148,8 +151,8 @@ export async function loadTitanDataOverrides(baseUrl: string): Promise<TitanData
       );
     }
 
-    cached = result;
-    cachedBaseUrl = base;
+    cachePromise = null;
+    cachePromiseBaseUrl = null;
     return result;
   })();
 
