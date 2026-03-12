@@ -7,6 +7,8 @@ interface StatsPanelProps {
   style?: ViewStyle;
 }
 
+const isTitan = (unit: Unit) => unit.unitType === 'titan';
+
 export default function StatsPanel({ unit, style }: StatsPanelProps) {
   return (
     <View style={[styles.container, style]}>
@@ -38,19 +40,22 @@ export default function StatsPanel({ unit, style }: StatsPanelProps) {
         </View>
       </View>
 
-      <View style={styles.statBox}>
-        <Text style={styles.statLabel}>M</Text>
-        <View style={styles.statValueBox}>
-          <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
-        </View>
-      </View>
-
-      <View style={styles.statBox}>
-        <Text style={styles.statLabel}>SC</Text>
-        <View style={styles.statValueBox}>
-          <Text style={styles.statValue}>{unit.stats.servitorClades}</Text>
-        </View>
-      </View>
+      {isTitan(unit) && (
+        <>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>M</Text>
+            <View style={styles.statValueBox}>
+              <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
+            </View>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>SC</Text>
+            <View style={styles.statValueBox}>
+              <Text style={styles.statValue}>{unit.stats.servitorClades}</Text>
+            </View>
+          </View>
+        </>
+      )}
     </View>
   );
 }

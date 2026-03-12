@@ -86,6 +86,7 @@ export default function HomeScreen({
   const [isTraitPickerOpen, setIsTraitPickerOpen] = useState(false);
   const [loyaltyFilter, setLoyaltyFilter] = useState<'loyalist' | 'traitor'>('traitor');
   const [titanNameDraft, setTitanNameDraft] = useState('');
+  const [manipleNameDraft, setManipleNameDraft] = useState('');
   const [confirmDeleteUnitId, setConfirmDeleteUnitId] = useState<string | null>(null);
   const [confirmDeleteManipleId, setConfirmDeleteManipleId] = useState<string | null>(null);
 
@@ -109,6 +110,46 @@ export default function HomeScreen({
       (unit.carapaceWeapon?.points ?? 0);
     const upgrades = (unit.upgrades ?? []).reduce((sum, u) => sum + (u.points ?? 0), 0);
     return base + weapons + upgrades;
+  };
+
+  const getBannerTotalPoints = (unit: Unit): number => {
+    if (unit.unitType !== 'banner') return 0;
+    const template = bannerTemplates.find((t) => t.id === unit.templateId);
+    if (!template) return 0;
+    const minK = template.minKnights ?? 3;
+    const maxK = template.maxKnights ?? 6;
+    const basePts = template.bannerBasePoints ?? 120;
+    const ptsPerKnight = template.bannerPointsPerKnight ?? 35;
+    const K = Math.min(maxK, Math.max(minK, unit.bannerKnightCount ?? minK));
+    const effectiveWeapons = template.availableWeapons ?? [];
+    const weaponIds = unit.bannerWeaponIds ?? [];
+    const weaponPts = weaponIds.reduce(
+      (sum, id) => sum + (effectiveWeapons.find((w) => w.id === id)?.points ?? 0),
+      0
+    );
+    const meltagun = Math.min(K, Math.max(0, unit.bannerMeltagunCount ?? 0));
+    const stormspear = Math.min(K, Math.max(0, unit.bannerStormspearCount ?? 0));
+    const meltagunPts = (effectiveWeapons.find((w) => w.id === 'meltaguns')?.points ?? 5) * meltagun;
+    const stormspearPts = (effectiveWeapons.find((w) => w.id === 'stormspear-rocket-pod')?.points ?? 5) * stormspear;
+    return basePts + (K - minK) * ptsPerKnight + weaponPts + meltagunPts + stormspearPts;
+  };
+
+  const getBannerWeaponsSummary = (unit: Unit): string => {
+    if (unit.unitType !== 'banner') return '';
+    const template = bannerTemplates.find((t) => t.id === unit.templateId);
+    if (!template?.availableWeapons?.length) return '—';
+    const counts: Record<string, number> = {};
+    for (const id of unit.bannerWeaponIds ?? []) {
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    const meltagun = Math.min(unit.bannerKnightCount ?? 0, Math.max(0, unit.bannerMeltagunCount ?? 0));
+    const stormspear = Math.min(unit.bannerKnightCount ?? 0, Math.max(0, unit.bannerStormspearCount ?? 0));
+    if (meltagun > 0) counts['meltaguns'] = meltagun;
+    if (stormspear > 0) counts['stormspear-rocket-pod'] = stormspear;
+    const parts = template.availableWeapons
+      .filter((w) => (counts[w.id] ?? 0) > 0)
+      .map((w) => `${counts[w.id]} x ${w.name}`);
+    return parts.length > 0 ? parts.join(', ') : '—';
   };
 
   const handleDeleteUnit = (unit: Unit) => {
@@ -201,9 +242,17 @@ export default function HomeScreen({
     [battlegroupManiples]
   );
 
+  const selectedUnit = useMemo(
+    () => (editTitanId ? battlegroupUnits.find((u) => u.id === editTitanId) : undefined),
+    [editTitanId, battlegroupUnits]
+  );
   const selectedTitan = useMemo(
-    () => (editTitanId ? titanUnits.find((u) => u.id === editTitanId) : undefined),
-    [editTitanId, titanUnits]
+    () => (selectedUnit?.unitType === 'titan' ? selectedUnit : undefined),
+    [selectedUnit]
+  );
+  const isBannerUnit = Boolean(
+    selectedUnit &&
+      (selectedUnit.unitType === 'banner' || bannerTemplates.some((t) => t.id === selectedUnit.templateId))
   );
   const selectedTitanManiple = useMemo(
     () => (selectedTitan ? battlegroupManiples.find((m) => m.titanUnitIds.includes(selectedTitan.id)) : undefined),
@@ -222,18 +271,26 @@ export default function HomeScreen({
       setTitanNameDraft('');
       return;
     }
-    setTitanNameDraft(selectedTitan?.name ?? '');
-  }, [editTitanId, selectedTitan?.name]);
+    setTitanNameDraft(selectedUnit?.name ?? '');
+  }, [editTitanId, selectedUnit?.name]);
 
-  const saveTitanName = () => {
-    if (!selectedTitan) return;
-    const next = titanNameDraft.trim();
-    if (!next) {
-      setTitanNameDraft(selectedTitan.name);
+  useEffect(() => {
+    if (!manageManipleId || !manageManiple) {
+      setManipleNameDraft('');
       return;
     }
-    if (next === selectedTitan.name) return;
-    void updateUnit({ ...selectedTitan, name: next });
+    setManipleNameDraft(manageManiple.name ?? '');
+  }, [manageManipleId, manageManiple?.name]);
+
+  const saveTitanName = () => {
+    if (!selectedUnit) return;
+    const next = titanNameDraft.trim();
+    if (!next) {
+      setTitanNameDraft(selectedUnit.name);
+      return;
+    }
+    if (next === selectedUnit.name) return;
+    void updateUnit({ ...selectedUnit, name: next });
   };
 
   const princepsTemplate = upgradeTemplates.find((u) => u.name.toLowerCase() === 'princeps seniores');
@@ -274,21 +331,21 @@ export default function HomeScreen({
   };
 
   const addUpgradeToTitan = (upgradeId: string) => {
-    if (!selectedTitan) return;
+    if (!selectedUnit) return;
     const tpl = upgradeTemplates.find((u) => u.id === upgradeId);
     if (!tpl) return;
-    const existing = selectedTitan.upgrades ?? [];
+    const existing = selectedUnit.upgrades ?? [];
     if (existing.some((u) => u.id === tpl.id)) return;
     void updateUnit({
-      ...selectedTitan,
+      ...selectedUnit,
       upgrades: [...existing, { id: tpl.id, name: tpl.name, points: tpl.points, rules: tpl.rules }],
     });
   };
 
   const removeUpgradeFromTitan = (upgradeId: string) => {
-    if (!selectedTitan) return;
-    const existing = selectedTitan.upgrades ?? [];
-    void updateUnit({ ...selectedTitan, upgrades: existing.filter((u) => u.id !== upgradeId) });
+    if (!selectedUnit) return;
+    const existing = selectedUnit.upgrades ?? [];
+    void updateUnit({ ...selectedUnit, upgrades: existing.filter((u) => u.id !== upgradeId) });
   };
   const orderedReinforcementUnits = useMemo(() => {
     const unassignedTitans = titanUnits.filter((u) => !assignedTitanIds.has(u.id));
@@ -635,8 +692,13 @@ export default function HomeScreen({
                       {unit.name}
                     </Text>
                   </View>
-                  <Text variant="bodyMedium" style={styles.textMuted}>Banner</Text>
+                  <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                    {getBannerWeaponsSummary(unit)}
+                  </Text>
                   <View style={styles.unitTitleRow}>
+                    <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                      {getBannerTotalPoints(unit)} pts
+                    </Text>
                     <IconButton
                       icon="cog-outline"
                       size={18}
@@ -1080,12 +1142,38 @@ export default function HomeScreen({
         <Modal
           visible={!!manageManipleId}
           onDismiss={() => setManageManipleId(null)}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={[styles.addModal, { paddingTop: 0 }]}
         >
           <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
-              {manageManiple ? `Manage ${manageManiple.name}` : 'Manage Maniple'}
-            </Text>
+            <TextInput
+              label="Name"
+              mode="outlined"
+              value={manipleNameDraft}
+              onChangeText={setManipleNameDraft}
+              onBlur={() => {
+                if (!manageManiple) return;
+                const trimmed = manipleNameDraft.trim();
+                if (trimmed && trimmed !== manageManiple.name) {
+                  void updateManiple({ ...manageManiple, name: trimmed });
+                }
+              }}
+              onSubmitEditing={() => {
+                if (!manageManiple) return;
+                const trimmed = manipleNameDraft.trim();
+                if (trimmed && trimmed !== manageManiple.name) {
+                  void updateManiple({ ...manageManiple, name: trimmed });
+                }
+              }}
+              placeholder="Maniple name"
+              returnKeyType="done"
+              autoCapitalize="words"
+              autoCorrect={false}
+              dense
+              style={[styles.nameInput, { flex: 1, marginTop: 0 }]}
+              outlineColor={colors.border}
+              activeOutlineColor={colors.text}
+              textColor={colors.text}
+            />
             <IconButton icon="close" iconColor={colors.text} onPress={() => setManageManipleId(null)} />
           </View>
 
@@ -1272,37 +1360,137 @@ export default function HomeScreen({
             setEditTitanId(null);
             setIsUpgradePickerOpen(false);
             setIsTraitPickerOpen(false);
+            setBannerWeaponSlotPicking(null);
           }}
           contentContainerStyle={styles.addModal}
         >
           <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
-              {titanNameDraft || (selectedTitan ? selectedTitan.name : 'Titan')}
-            </Text>
+            <TextInput
+              label="Name"
+              mode="outlined"
+              value={titanNameDraft}
+              onChangeText={setTitanNameDraft}
+              onBlur={saveTitanName}
+              onSubmitEditing={saveTitanName}
+              returnKeyType="done"
+              autoCapitalize="words"
+              autoCorrect={false}
+              dense
+              style={[styles.nameInput, { flex: 1, marginTop: 0, backgroundColor: colors.panel }]}
+              outlineColor={colors.border}
+              activeOutlineColor={colors.text}
+              textColor={colors.text}
+            />
             <IconButton icon="close" iconColor={colors.text} onPress={() => setEditTitanId(null)} />
           </View>
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
-            <View style={{ marginTop: spacing.sm, marginBottom: spacing.sm, zIndex: 2 }}>
-              <TextInput
-                label="Name"
-                mode="outlined"
-                value={titanNameDraft}
-                onChangeText={setTitanNameDraft}
-                onBlur={saveTitanName}
-                onSubmitEditing={saveTitanName}
-                returnKeyType="done"
-                autoCapitalize="words"
-                autoCorrect={false}
-                dense
-                style={{ backgroundColor: colors.panel }}
-                outlineColor={colors.border}
-                activeOutlineColor={colors.text}
-                textColor={colors.text}
-              />
-            </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
+            {isBannerUnit && selectedUnit && (() => {
+              const template = bannerTemplates.find((t) => t.id === selectedUnit.templateId);
+              if (!template) {
+                return (
+                  <View style={{ marginTop: spacing.lg }}>
+                    <Text variant="bodySmall" style={{ color: '#ff9800' }}>
+                      Unknown banner type (templateId: {selectedUnit.templateId ?? 'missing'}). Expected one of: questoris, cerastus.
+                    </Text>
+                  </View>
+                );
+              }
+              const minK = template.minKnights ?? 3;
+              const maxK = template.maxKnights ?? 6;
+              const basePts = template.bannerBasePoints ?? 120;
+              const ptsPerKnight = template.bannerPointsPerKnight ?? 35;
+              const effectiveWeapons = template.availableWeapons ?? [];
+              const K = Math.min(maxK, Math.max(minK, selectedUnit.bannerKnightCount ?? minK));
+              const weaponIds = selectedUnit.bannerWeaponIds ?? [];
+              const armWeapons = effectiveWeapons.filter((w) => w.mountType === 'arm' && w.id !== 'meltaguns');
+              const meltagun = Math.min(K, Math.max(0, selectedUnit.bannerMeltagunCount ?? 0));
+              const stormspear = Math.min(K, Math.max(0, selectedUnit.bannerStormspearCount ?? 0));
+              const requiredTotal = 2 * K;
+              const setKnightCount = (newK: number) => {
+                const n = Math.min(maxK, Math.max(minK, newK));
+                const nextIds = weaponIds.slice(0, 2 * n);
+                void updateUnit({
+                  ...selectedUnit,
+                  bannerKnightCount: n,
+                  bannerWeaponIds: nextIds,
+                  bannerMeltagunCount: Math.min(n, meltagun),
+                  bannerStormspearCount: Math.min(n, stormspear),
+                });
+              };
+              const adjustWeaponCount = (weaponId: string, delta: number) => {
+                let next = [...(selectedUnit.bannerWeaponIds ?? [])];
+                if (delta > 0) {
+                  if (next.length < requiredTotal) next.push(weaponId);
+                } else {
+                  const idx = next.indexOf(weaponId);
+                  if (idx !== -1) next.splice(idx, 1);
+                }
+                void updateUnit({ ...selectedUnit, bannerWeaponIds: next });
+              };
+              const setMeltagunCount = (n: number) => void updateUnit({ ...selectedUnit, bannerMeltagunCount: Math.min(K, Math.max(0, n)) });
+              const setStormspearCount = (n: number) => void updateUnit({ ...selectedUnit, bannerStormspearCount: Math.min(K, Math.max(0, n)) });
+              const weaponPts = (selectedUnit.bannerWeaponIds ?? []).reduce(
+                (sum, id) => sum + (effectiveWeapons.find((w) => w.id === id)?.points ?? 0),
+                0
+              );
+              const meltagunPts = (effectiveWeapons.find((w) => w.id === 'meltaguns')?.points ?? 5) * meltagun;
+              const stormspearPts = (effectiveWeapons.find((w) => w.id === 'stormspear-rocket-pod')?.points ?? 5) * stormspear;
+              const totalPts = basePts + (K - minK) * ptsPerKnight + weaponPts + meltagunPts + stormspearPts;
+              const armWeaponTotal = weaponIds.length;
+              const warnWeapons = armWeaponTotal !== requiredTotal;
+              return (
+                <View style={{ marginTop: spacing.lg }}>
+                  <Text variant="bodySmall" style={styles.ruleSectionTitle}>Knights</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                    <IconButton icon="minus" size={20} onPress={() => setKnightCount(K - 1)} disabled={K <= minK} />
+                    <Text variant="titleMedium" style={styles.textPrimary}>{K}</Text>
+                    <IconButton icon="plus" size={20} onPress={() => setKnightCount(K + 1)} disabled={K >= maxK} />
+                    <Text variant="bodySmall" style={styles.textMuted}>({minK}–{maxK})</Text>
+                  </View>
+                  <View style={{ marginTop: spacing.md }}>
+                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Weapons</Text>
+                    {warnWeapons && (
+                      <Text variant="bodySmall" style={{ color: '#ff9800', marginTop: spacing.xs }}>
+                        Total is {armWeaponTotal}; need {requiredTotal}.
+                      </Text>
+                    )}
+                    {armWeapons.map((w) => {
+                      const count = weaponIds.filter((id) => id === w.id).length;
+                      return (
+                        <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                          <Text variant="bodyMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</Text>
+                          <IconButton icon="minus" size={20} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
+                          <Text variant="titleMedium" style={styles.textPrimary}>{count}</Text>
+                          <IconButton icon="plus" size={20} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <View style={{ marginTop: spacing.md }}>
+                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Meltaguns</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                      <IconButton icon="minus" size={20} onPress={() => setMeltagunCount(meltagun - 1)} disabled={meltagun <= 0} />
+                      <Text variant="titleMedium">{meltagun}</Text>
+                      <IconButton icon="plus" size={20} onPress={() => setMeltagunCount(meltagun + 1)} disabled={meltagun >= K} />
+                    </View>
+                  </View>
+                  <View style={{ marginTop: spacing.md }}>
+                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Stormspear rocket pod</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                      <IconButton icon="minus" size={20} onPress={() => setStormspearCount(stormspear - 1)} disabled={stormspear <= 0} />
+                      <Text variant="titleMedium">{stormspear}</Text>
+                      <IconButton icon="plus" size={20} onPress={() => setStormspearCount(stormspear + 1)} disabled={stormspear >= K} />
+                    </View>
+                  </View>
+                  <View style={{ marginTop: spacing.lg }}>
+                    <Text variant="titleMedium" style={styles.textPrimary}>Total: {totalPts} pts</Text>
+                  </View>
+                </View>
+              );
+            })()}
 
-            {selectedTitanManiple ? (
+            {selectedUnit?.unitType === 'titan' && selectedTitanManiple ? (
               <View style={{ marginTop: spacing.sm }}>
                 <Text variant="bodySmall" style={styles.ruleSectionTitle}>
                   Princeps Seniores
@@ -1360,53 +1548,55 @@ export default function HomeScreen({
                 Maniple: {selectedTitanManiple.name}
               </Text>
             </View>
-          ) : (
+          ) : selectedUnit?.unitType === 'titan' ? (
             <Text variant="bodySmall" style={styles.sectionEmpty}>
               This titan is not in a maniple (Princeps Seniores is maniple-only).
             </Text>
-          )}
+          ) : null}
 
-          <View style={{ marginTop: spacing.lg }}>
-            <Text variant="bodySmall" style={styles.ruleSectionTitle}>
-              Wargear & Upgrades
-            </Text>
-            <Button mode="outlined" onPress={() => setIsUpgradePickerOpen(true)} disabled={!selectedTitan}>
-              Add upgrade
-            </Button>
-            {(selectedTitan?.upgrades ?? []).length === 0 ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
-                No upgrades selected.
+          {selectedUnit?.unitType === 'titan' && (
+            <View style={{ marginTop: spacing.lg }}>
+              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                Wargear & Upgrades
               </Text>
-            ) : (
-              (selectedTitan?.upgrades ?? []).map((u) => (
-                <Card key={u.id} style={[styles.templateCard, { marginTop: spacing.sm }]}>
-                  <Card.Content>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text variant="titleMedium" style={styles.textPrimary}>
-                        {u.name}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text variant="bodySmall" style={styles.textMuted}>
-                          {u.points} pts
+              <Button mode="outlined" onPress={() => setIsUpgradePickerOpen(true)} disabled={!selectedUnit}>
+                Add upgrade
+              </Button>
+              {(selectedUnit?.upgrades ?? []).length === 0 ? (
+                <Text variant="bodySmall" style={styles.sectionEmpty}>
+                  No upgrades selected.
+                </Text>
+              ) : (
+                (selectedUnit?.upgrades ?? []).map((u) => (
+                  <Card key={u.id} style={[styles.templateCard, { marginTop: spacing.sm }]}>
+                    <Card.Content>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text variant="titleMedium" style={styles.textPrimary}>
+                          {u.name}
                         </Text>
-                        <IconButton
-                          icon="trash-can-outline"
-                          size={18}
-                          iconColor={colors.text}
-                          onPress={() => removeUpgradeFromTitan(u.id)}
-                        />
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text variant="bodySmall" style={styles.textMuted}>
+                            {u.points} pts
+                          </Text>
+                          <IconButton
+                            icon="trash-can-outline"
+                            size={18}
+                            iconColor={colors.text}
+                            onPress={() => removeUpgradeFromTitan(u.id)}
+                          />
+                        </View>
                       </View>
-                    </View>
-                    {(u.rules ?? []).slice(0, 2).map((r, idx) => (
-                      <Text key={`${u.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
-                        {r}
-                      </Text>
-                    ))}
-                  </Card.Content>
-                </Card>
-              ))
-            )}
-          </View>
+                      {(u.rules ?? []).slice(0, 2).map((r, idx) => (
+                        <Text key={`${u.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                          {r}
+                        </Text>
+                      ))}
+                    </Card.Content>
+                  </Card>
+                ))
+              )}
+            </View>
+          )}
           </ScrollView>
         </Modal>
 
@@ -1597,19 +1787,25 @@ export default function HomeScreen({
 
                 {(() => {
                   const legionKey = selectedTitanLegion?.categoryKey ?? null;
-                  // Show all wargear for titans; BattleScribe chassis exclusions often over-exclude, so we don't filter by excludedTitanTemplateIds here.
+                  // For titans: hide banner-only (e.g. Meltaguns) and toggle-only (e.g. Princeps Seniores) from the upgrade picker.
+                  const forTitan = selectedUnit?.unitType === 'titan';
+                  const notTitanExcluded = (u: (typeof upgradeTemplates)[number]) =>
+                    !forTitan || (!u.bannerOnly && !u.titanToggleOnly);
                   const nonLegio = (u: (typeof upgradeTemplates)[number]) => (u.legioKeys ?? []).length === 0;
-                  const universal = upgradeTemplates.filter((u) => u.sourceGroup === 'universal' && nonLegio(u));
+                  const universal = upgradeTemplates
+                    .filter((u) => u.sourceGroup === 'universal' && nonLegio(u) && notTitanExcluded(u));
                   // Battlegroup allegiance determines wargear; fallback to loyalty filter when no battlegroup
                   const effectiveLoyalty: 'loyalist' | 'traitor' =
                     activeBattlegroup?.allegiance === 'loyalist' || activeBattlegroup?.allegiance === 'traitor'
                       ? activeBattlegroup.allegiance
                       : loyaltyFilter;
                   // Loyalty wargear (Loyalist/Traitor) from battlegroup allegiance
-                  const loyalty = upgradeTemplates.filter((u) => u.sourceGroup === effectiveLoyalty && nonLegio(u));
+                  const loyalty = upgradeTemplates.filter(
+                    (u) => u.sourceGroup === effectiveLoyalty && nonLegio(u) && notTitanExcluded(u)
+                  );
                   // Legion-specific wargear (e.g. Legio Mortis) in addition to loyalty wargear
                   const legion = legionKey
-                    ? upgradeTemplates.filter((u) => (u.legioKeys ?? []).includes(legionKey))
+                    ? upgradeTemplates.filter((u) => (u.legioKeys ?? []).includes(legionKey) && notTitanExcluded(u))
                     : [];
                   const isStandard = (n: string) => {
                     const ln = n.toLowerCase();

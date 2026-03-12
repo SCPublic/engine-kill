@@ -10,6 +10,8 @@ interface WeaponMountProps {
   weapon: Weapon | null;
   onPress: () => void;
   onChangePress?: () => void;
+  /** When false, tapping the card does nothing (e.g. knights never have weapons disabled). */
+  canDisable?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
 }
@@ -19,11 +21,12 @@ export default function WeaponMount({
   weapon,
   onPress,
   onChangePress,
+  canDisable = true,
   disabled = false,
   style,
 }: WeaponMountProps) {
-  const isWeaponDisabled = !!weapon && weapon.status === 'disabled';
-  const isWeaponDestroyed = !!weapon && weapon.status === 'destroyed';
+  const isWeaponDisabled = canDisable && !!weapon && weapon.status === 'disabled';
+  const isWeaponDestroyed = canDisable && !!weapon && weapon.status === 'destroyed';
   const isDamaged = isWeaponDisabled || isWeaponDestroyed;
   const disabledRollLines =
     weapon?.disabledRollLines?.length
@@ -43,7 +46,7 @@ export default function WeaponMount({
         isWeaponDisabled && styles.weaponDisabledContainer,
         style,
       ]} 
-      onPress={disabled ? undefined : onPress}
+      onPress={disabled || !canDisable ? undefined : onPress}
       disabled={disabled}
       activeOpacity={disabled ? 1 : 0.7}
     >
@@ -90,7 +93,9 @@ export default function WeaponMount({
               ]}
               numberOfLines={1}
             >
-              {weapon.points} POINTS
+              {typeof weapon.points === 'number' && weapon.points > 0
+                ? `${weapon.points} pts`
+                : '—'}
             </Text>
           </View>
 

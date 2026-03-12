@@ -6,6 +6,8 @@ alwaysApply: true
 
 # Titan data and data source order
 
+- **Always source data from titan-data.** Engine-kill must load reference data (titans, chassis, weapons, damage tracks, special rules, etc.) from the titan-data repo. Do not hardcode or fall back to local defaults for that data; if data is missing, fix it in titan-data or surface an error.
 - **All titan data lives in the titan-data repo.** Do not add or hardcode titan/chassis/weapon/damage reference data in engine-kill (no new JSON in this repo for that purpose, no large inline data in `src/`).
 - **Prefer BattleScribe XML over new JSON.** Use `Adeptus Titanicus 2018.gst` and the titan-data catalogs (e.g. `Battlegroup.cat`, `Household.cat`) as the first source. Only add or extend engine-kill JSON in titan-data when the game system/catalogs cannot express what’s needed.
+- **Fix data issues in titan-data when possible.** When the app hits a data mismatch (e.g. entry name wrong, rules missing, catalog structure different than expected), consider changing titan-data first: fix the catalog name, add the rule to the right entry, or adjust the XML so the source of truth is correct. Prefer titan-data fixes over workarounds or extra logic in engine-kill.
 - Full conventions: see `docs/DATA_PATTERNS.md`.

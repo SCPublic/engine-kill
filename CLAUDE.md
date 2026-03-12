@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. For senior staff-level PWA engineering standards (architecture, performance, accessibility, responsive/offline), see `.cursor/rules/engineering-standards.mdc`.
 
 ## Project Overview
 
-Engine Kill is a React Native/Expo mobile app for iOS, Android, and web that helps players manage titan-scale tabletop battles. Players track units (void shields, heat, damage, weapons) with local persistence via AsyncStorage. Real-time multiplayer sync via Firebase is planned but not yet implemented.
+Engine Kill is a production-grade React Native/Expo PWA for iOS, Android, and web that helps players manage titan-scale tabletop battles. Players track units (void shields, heat, damage, weapons) with local persistence via AsyncStorage. Real-time multiplayer sync via Firebase is planned but not yet implemented.
 
 ## Commands
 
@@ -22,6 +22,11 @@ npm run web      # Run in web browser
 ```
 
 From the Expo dev server: press `w` for web, `i` for iOS simulator, `a` for Android emulator.
+
+**"No apps connected"**: The terminal shows this until a client connects. To connect:
+- **Web**: Press `w` in the terminal after `npm start`, or run `npm run web` to start and open the browser.
+- **Phone (Expo Go)**: Same Wi‑Fi as the computer, scan the QR code; enable Local Network for Expo Go in system settings.
+- **Simulator**: Press `i` (iOS) or `a` (Android). If connection fails, try `rm -rf .expo` then `npm start` again.
 
 ## Architecture
 

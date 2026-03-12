@@ -20,12 +20,20 @@ User/session data (battlegroups, units, player info) stays device-local and is n
 - **Before adding a new `.json` file** in titan-data (e.g. under `engine-kill/`), check whether the same information can be represented or derived from the existing `.gst` / `.cat` files. If it can, extend or fix the BattleScribe data instead of adding JSON.
 - **Engine-kill JSON** (e.g. `engine-kill/damage-tracks.json`, `engine-kill/chassis-overrides.json`, `engine-kill/weapon-metadata.json`) is for app-specific overrides and metadata that BattleScribe does not model (e.g. damage track layout, UI hints). Add or change these only when necessary.
 
-## 3. Summary
+## 3. Fix data issues in titan-data first
+
+When the app hits a data problem—wrong entry name, missing rules, catalog structure that doesn't match what the app expects—**consider making changes in titan-data** before adding workarounds in engine-kill.
+
+- **Do:** Fix the catalog in titan-data (e.g. rename a selection entry to match what the app expects, add rules to the correct entry, fix BattleScribe XML) so the source of truth is correct.
+- **Do not:** Rely only on engine-kill workarounds or extra matching logic when the underlying issue is in the data. Prefer fixing titan-data and surfacing clear errors when data is wrong, rather than papering over mismatches in code.
+
+## 4. Summary
 
 | Question | Answer |
 |----------|--------|
 | Where does titan data live? | titan-data repo only; not hardcoded in engine-kill. |
 | What do we use first? | Adeptus Titanicus 2018 (`.gst` / `.cat`) in titan-data. |
 | When do we add or change engine-kill JSON? | Only when the game system and catalogs cannot provide or represent the data. |
+| When the app and catalog don't match? | Consider fixing titan-data first; prefer source-of-truth fixes over workarounds in engine-kill. |
 
 These conventions keep a single source of truth in titan-data and avoid duplicating or overriding BattleScribe data unnecessarily.

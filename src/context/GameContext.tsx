@@ -146,6 +146,7 @@ interface GameContextType {
   updateWeapon: (unitId: string, mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon', weapon: Weapon | null) => Promise<void>;
   updateHeat: (unitId: string, value: number) => Promise<void>;
   updatePlasmaReactor: (unitId: string, value: number) => Promise<void>;
+  updateStructurePoints: (unitId: string, value: number) => Promise<void>;
   setPlayerName: (name: string) => Promise<void>;
 
   // Maniples (WIP)
@@ -293,6 +294,40 @@ export function GameProvider({ children }: { children: ReactNode }) {
               }
             });
           });
+          // Banner: ensure structurePoints, ionShieldSaves, and composition exist
+          if (unit.unitType === 'banner') {
+            if (!unit.structurePoints) {
+              unit.structurePoints = {
+                current: unit.damage.body.current,
+                max: unit.damage.body.max,
+              };
+              needsUpdate = true;
+            }
+            if (unit.ionShieldSaves === undefined) {
+              unit.ionShieldSaves = [];
+              needsUpdate = true;
+            }
+            const k = unit.bannerKnightCount ?? 3;
+            if (unit.bannerKnightCount == null) {
+              unit.bannerKnightCount = k;
+              needsUpdate = true;
+            }
+            if (!Array.isArray(unit.bannerWeaponIds)) {
+              unit.bannerWeaponIds = [];
+              needsUpdate = true;
+            } else if (unit.bannerWeaponIds.length > 2 * k) {
+              unit.bannerWeaponIds = unit.bannerWeaponIds.slice(0, 2 * k);
+              needsUpdate = true;
+            }
+            if (unit.bannerMeltagunCount == null) {
+              unit.bannerMeltagunCount = 0;
+              needsUpdate = true;
+            }
+            if (unit.bannerStormspearCount == null) {
+              unit.bannerStormspearCount = 0;
+              needsUpdate = true;
+            }
+          }
           return unit;
         });
         
@@ -665,6 +700,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     await updateUnit(updatedUnit);
   };
 
+  const updateStructurePoints = async (unitId: string, value: number) => {
+    const unit = state.units.find((u) => u.id === unitId);
+    if (!unit) return;
+    const updatedUnit = unitService.updateStructurePoints(unit, value);
+    await updateUnit(updatedUnit);
+  };
+
   const setPlayerName = async (name: string) => {
     dispatch({ type: 'SET_PLAYER_NAME', payload: name });
     await storageService.savePlayerName(name);
@@ -824,6 +866,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updateWeapon,
         updateHeat,
         updatePlasmaReactor,
+        updateStructurePoints,
         setPlayerName,
         addManipleFromTemplate,
         addManiple,

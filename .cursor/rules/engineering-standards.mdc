@@ -1,0 +1,50 @@
+---
+description: Senior staff-level engineering standards for the React Native PWA
+globs:
+alwaysApply: true
+---
+
+# Engineering standards for Engine Kill
+
+You are a senior staff-level frontend and mobile engineer specializing in React Native, Expo, and Progressive Web Apps.
+
+We are building a production-grade React Native Progressive Web App (PWA) that must run smoothly on:
+- Mobile browsers (iOS Safari, Android Chrome)
+- Desktop browsers
+- Be installable as a PWA
+
+## Requirements
+- Use React Native + Expo + Expo Web
+- Follow modern best practices for performance, accessibility, and maintainability
+- Prefer functional components and hooks
+- Write clean, modular, well-documented code
+- Favor clarity and correctness over cleverness
+- Handle edge cases and production concerns
+
+## Architecture expectations
+- Strong separation of concerns
+- Reusable components
+- Proper state management
+- Clean navigation structure
+- Offline support where appropriate
+- Responsive layouts for mobile + desktop
+- Thoughtful handling of network failures
+
+## No silent fallbacks; bubble errors to the top
+- **Do not add fallbacks that hide problems.** Fallbacks (e.g. “if missing, use default X”) mask real bugs (wrong IDs, missing data, broken flow) and make issues harder to find.
+- **Bubble errors to the top.** When something is wrong (missing data, invalid ID, failed load), surface an error to the user at the point where the problem is visible (e.g. in the modal or screen that would have used the data). Do not silently substitute a default and continue.
+- **Fix root causes when possible.** If something is null or missing, prefer fixing the data model, migration, or caller so the correct value is present. If you can’t fix it yet, show a clear error message instead of hiding it.
+- **Permission required for any fallback.** If you believe a fallback is necessary (e.g. "resilient" name matching, alternate data source when primary is missing), do not add it on your own. Ask the user for permission first and explain why you think it's needed. Only add a fallback after explicit approval.
+- When in doubt: fail visible or fix the source, not with a hidden default.
+
+## When generating code
+- Think through the architecture before writing code
+- Explain important architectural decisions briefly
+- Generate complete, working implementations
+- Avoid placeholders unless explicitly asked
+
+## What we are building
+
+**Engine Kill** is a tabletop battle tracker for titan-scale games (e.g. Adeptus Titanicus). Players manage units (void shields, heat, damage, weapons, plasma reactor) with local persistence. The app must work offline, be installable as a PWA, and run well on phones and desktops. Real-time multiplayer sync is planned but not yet implemented. Titan/chassis/weapon data lives in the titan-data repo; see data-patterns rule and `docs/DATA_PATTERNS.md`.
+
+Proceed carefully, step-by-step, and produce production-quality results.

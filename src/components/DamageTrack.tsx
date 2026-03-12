@@ -5,6 +5,8 @@ import { ArmorRolls, CriticalEffect } from '../models/UnitTemplate';
 import CriticalDamageTracker from './CriticalDamageTracker';
 
 interface DamageTrackProps {
+  /** When 'structure', shows "STRUCTURE POINTS" label and omits critical tracker and expanded section (banner track). */
+  variant?: 'damage' | 'structure';
   location: 'head' | 'body' | 'legs';
   damage: DamageLocation;
   armorRolls: ArmorRolls;
@@ -17,6 +19,7 @@ interface DamageTrackProps {
 }
 
 export default function DamageTrack({
+  variant = 'damage',
   location,
   damage,
   armorRolls,
@@ -29,13 +32,14 @@ export default function DamageTrack({
 }: DamageTrackProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const animatedHeight = React.useRef(new Animated.Value(0)).current;
+  const isStructure = variant === 'structure';
 
   // Determine which critical level is selected
   const selectedCriticalLevel =
     damage.criticals.yellow ? 'yellow' :
     damage.criticals.orange ? 'orange' :
     damage.criticals.red ? 'red' : null;
-  const locationName = location.toUpperCase();
+  const locationName = isStructure ? 'STRUCTURE POINTS' : location.toUpperCase();
 
   const handlePipPress = (index: number) => {
     // If clicking the rightmost filled pip, return to 1 (minimum)
@@ -60,18 +64,24 @@ export default function DamageTrack({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isStructure && styles.structureContainer]}>
       {/* Top Row: Location Label and Critical Indicators */}
       <View style={styles.topRow}>
-        <TouchableOpacity
-          style={styles.locationButton}
-          onPress={toggleExpanded}
-        >
-          <Text style={styles.locationLabel}>{locationName}</Text>
-        </TouchableOpacity>
+        {isStructure ? (
+          <View style={styles.structureLabel}>
+            <Text style={styles.locationLabel}>{locationName}</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.locationButton}
+            onPress={toggleExpanded}
+          >
+            <Text style={styles.locationLabel}>{locationName}</Text>
+          </TouchableOpacity>
+        )}
 
-        {/* Critical Damage Tracker */}
-        {onCriticalChange && (
+        {/* Critical Damage Tracker (titan only) */}
+        {!isStructure && onCriticalChange && (
           <CriticalDamageTracker
             selectedLevel={selectedCriticalLevel}
             onLevelChange={onCriticalChange}
@@ -114,8 +124,8 @@ export default function DamageTrack({
         })}
       </View>
 
-      {/* Expanded Info Section */}
-      {(showArmorRolls || showCriticalEffects) && (
+      {/* Expanded Info Section (titan only; structure track has no armor/criticals) */}
+      {!isStructure && (showArmorRolls || showCriticalEffects) && (
         <Animated.View style={[
           styles.expandedSection,
           {
@@ -186,6 +196,19 @@ const styles = StyleSheet.create({
     borderColor: '#000C03',
     borderBottomWidth: 0,
     gap: 16,
+  },
+  structureContainer: {
+    borderWidth: 1,
+    borderColor: '#444',
+    borderBottomWidth: 1,
+    borderRadius: 4,
+    backgroundColor: '#1a1a1a',
+    padding: 12,
+    gap: 12,
+  },
+  structureLabel: {
+    paddingVertical: 4,
+    paddingHorizontal: 0,
   },
   topRow: {
     flexDirection: 'row' as 'row',

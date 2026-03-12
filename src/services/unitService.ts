@@ -89,7 +89,28 @@ export const unitService = {
       rightWeapon: defaultRight ? weaponTemplateToWeapon(defaultRight) : null,
       ...(template.defaultStats.hasCarapaceWeapon && { carapaceWeapon: null }),
       stats: { ...template.defaultStats.stats },
+      ...(template.unitType === 'banner' && (() => {
+        const k = Math.min(6, Math.max(3, template.minKnights ?? 3));
+        return {
+          structurePoints: {
+            current: 1,
+            max: template.defaultStats.structurePointsMax ?? template.defaultStats.damage.body.max,
+          },
+          ionShieldSaves: template.defaultStats.ionShieldSaves ?? [],
+          bannerKnightCount: k,
+          bannerWeaponIds: [],
+          bannerMeltagunCount: 0,
+          bannerStormspearCount: 0,
+        };
+      })()),
     };
+  },
+
+  updateStructurePoints(unit: Unit, value: number): Unit {
+    const sp = unit.structurePoints;
+    if (!sp) return unit;
+    const newValue = Math.max(1, Math.min(value, sp.max));
+    return { ...unit, structurePoints: { ...sp, current: newValue } };
   },
 
   updateDamage(

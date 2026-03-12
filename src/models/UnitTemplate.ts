@@ -39,6 +39,8 @@ export interface WeaponTemplate {
   repairRoll?: string; // e.g., "4+"
   disabledRollLines?: string[]; // usually 2 lines, e.g. ["9-12: Detonation {Body, S7}", "13+: Detonation {Body, S9}"]
   mountType: 'arm' | 'carapace'; // Which mount this weapon can go on
+  /** If set, this weapon is only available to these legions (BattleScribe categoryLink names, e.g. LegioMortis). Empty/absent = available to all. */
+  legioKeys?: string[];
 }
 
 export interface UnitTemplate {
@@ -68,11 +70,21 @@ export interface UnitTemplate {
     };
     hasCarapaceWeapon: boolean; // Whether this Titan has a carapace weapon slot
     stats: UnitStats;
+    // Banner-only (ignored for titans)
+    structurePointsMax?: number;
+    ionShieldSaves?: string[];
   };
   availableWeapons: WeaponTemplate[];
   /** If set, unit is created with this weapon in the left arm (from GST min=1 single-option group). */
   defaultLeftWeaponId?: string;
   /** If set, unit is created with this weapon in the right arm (from GST min=1 single-option group). */
   defaultRightWeaponId?: string;
+  /** Banner-only: min/max knights (e.g. Questoris 3–6). */
+  minKnights?: number;
+  maxKnights?: number;
+  /** Banner-only: base points for the banner (e.g. 120 for Questoris). */
+  bannerBasePoints?: number;
+  /** Banner-only: points added per knight (e.g. 35 per additional knight). */
+  bannerPointsPerKnight?: number;
 }
 
