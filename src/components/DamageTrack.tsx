@@ -64,7 +64,7 @@ export default function DamageTrack({
       {/* Top Row: Location Label and Critical Indicators */}
       <View style={styles.topRow}>
         <TouchableOpacity
-          style={styles.locationButton}
+          style={[styles.locationButton, isExpanded && styles.locationButtonExpanded]}
           onPress={toggleExpanded}
         >
           <Text style={styles.locationLabel}>{locationName}</Text>
@@ -137,7 +137,7 @@ export default function DamageTrack({
           {/* Armor rolls (roll ranges per hit type) */}
           {showArmorRolls && (
             <View style={styles.damageSection}>
-              <Text style={styles.sectionTitle}>ARMOR ROLLS</Text>
+              <Text style={styles.sectionTitle}>DAMAGE</Text>
               <View style={styles.armorRollsContainer}>
                 <View style={styles.armorRollsColumn}>
                   <Text style={styles.armorRollsRange}>{armorRolls.direct}</Text>
@@ -145,9 +145,9 @@ export default function DamageTrack({
                   <Text style={styles.armorRollsRange}>{armorRolls.critical}</Text>
                 </View>
                 <View style={styles.armorRollsLabelColumn}>
-                  <Text style={styles.armorRollsLabel}>Direct armor roll</Text>
-                  <Text style={styles.armorRollsLabel}>Devastating armor roll</Text>
-                  <Text style={styles.armorRollsLabel}>Critical armor roll</Text>
+                  <Text style={styles.armorRollsLabel}>Direct</Text>
+                  <Text style={styles.armorRollsLabel}>Devastating</Text>
+                  <Text style={styles.armorRollsLabel}>Critical</Text>
                 </View>
               </View>
             </View>
@@ -179,12 +179,8 @@ export default function DamageTrack({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    borderWidth: 3,
-    borderColor: '#000C03',
-    borderBottomWidth: 0,
+    backgroundColor: 'rgba(0, 152, 33, 0.15)',
+    padding: 16,
     gap: 16,
   },
   topRow: {
@@ -193,15 +189,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between' as 'space-between',
   },
   locationButton: {
-    backgroundColor: 'rgba(0, 152, 33, 0.25)',
-    borderWidth: 2,
-    borderColor: '#009821',
+    backgroundColor: '#0d120e',
     borderRadius: 8,
     height: 32,
     minWidth: 48,
     width: 100,
     justifyContent: 'center' as 'center',
     alignItems: 'center' as 'center',
+  },
+  locationButtonExpanded: {
+    backgroundColor: 'rgba(0, 152, 33, 0.3)',
   },
   locationLabel: {
     color: '#9dffb2',
@@ -250,8 +247,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   pipEmpty: {
-    backgroundColor: 'rgba(211, 255, 207, 0.1)',
-    borderColor: '#d3ffcf',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderColor: 'transparent',
   },
   modifierText: {
     color: '#9dffb2',

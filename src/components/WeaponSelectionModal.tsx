@@ -1,5 +1,14 @@
-import React from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  ScrollView,
+} from 'react-native';
 import { WeaponTemplate } from '../models/UnitTemplate';
 
 interface WeaponSelectionModalProps {
@@ -17,181 +26,278 @@ export default function WeaponSelectionModal({
   onSelect,
   onClose,
 }: WeaponSelectionModalProps) {
-  // Filter weapons by mount type
   const availableWeapons = weapons.filter(w => w.mountType === mountType);
+
+  const [internalVisible, setInternalVisible] = useState(visible);
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetTranslateY = useRef(new Animated.Value(600)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setInternalVisible(true);
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 0.35,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetTranslateY, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetTranslateY, {
+          toValue: 600,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setInternalVisible(false);
+      });
+    }
+  }, [visible]);
+
+  const fmtRange = (v: number | string) => {
+    if (v === '-' || v === '' || v === null || v === undefined) return '—';
+    if (typeof v === 'number') return `${v}"`;
+    const t = String(v).trim();
+    if (!t || t === '-') return '—';
+    if (t === 'T' || t.toLowerCase() === 'template') return 'T';
+    if (t.includes('"')) return t;
+    if (/^-?\d+(\.\d+)?$/.test(t)) return `${t}"`;
+    return t;
+  };
 
   return (
     <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
+      visible={internalVisible}
+      transparent
+      animationType="none"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Select Weapon</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
+      </TouchableWithoutFeedback>
 
-          <ScrollView style={styles.weaponList}>
-            {/* "No Weapon" option */}
-            <TouchableOpacity
-              style={styles.weaponCard}
-              onPress={() => {
-                onSelect(null);
-                onClose();
-              }}
-            >
-              <Text style={styles.weaponName}>No Weapon</Text>
-            </TouchableOpacity>
-
-            {/* Available weapons */}
-            {availableWeapons.map((weapon) => (
-              <TouchableOpacity
-                key={weapon.id}
-                style={styles.weaponCard}
-                onPress={() => {
-                  onSelect(weapon);
-                  onClose();
-                }}
-              >
-                <View style={styles.weaponHeader}>
-                  <Text style={styles.weaponName}>{weapon.name}</Text>
-                  <Text style={styles.weaponPoints}>{weapon.points} POINTS</Text>
-                </View>
-
-                <View style={styles.statsTable}>
-                  <View style={styles.statsRow}>
-                    <Text style={styles.statLabel}>Range:</Text>
-                    <Text style={styles.statValue}>Short: {String(weapon.shortRange).includes('"') ? weapon.shortRange : `${weapon.shortRange}"`}</Text>
-                    <Text style={styles.statValue}>Long: {String(weapon.longRange).includes('"') ? weapon.longRange : `${weapon.longRange}"`}</Text>
-                  </View>
-                  <View style={styles.statsRow}>
-                    <Text style={styles.statLabel}>ACC:</Text>
-                    <Text style={styles.statValue}>Short: {weapon.accuracyShort}</Text>
-                    <Text style={styles.statValue}>Long: {weapon.accuracyLong}</Text>
-                  </View>
-                  <View style={styles.statsRow}>
-                    <Text style={styles.statLabel}>Dice | Str:</Text>
-                    <Text style={styles.statValue}>{weapon.dice} | {weapon.strength}</Text>
-                  </View>
-                </View>
-
-                {weapon.traits.length > 0 && (
-                  <Text style={styles.traits}>
-                    Traits: {weapon.traits.join(', ')}
-                  </Text>
-                )}
-
-                {weapon.specialRules.length > 0 && (
-                  <Text style={styles.specialRules}>
-                    {weapon.specialRules.join(' • ')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetTranslateY }] }]}>
+        {/* Drag handle */}
+        <View style={styles.handleContainer}>
+          <View style={styles.handle} />
         </View>
-      </View>
+
+        {/* Title */}
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>SELECT WEAPON</Text>
+        </View>
+
+        <View style={styles.divider} />
+
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* No Weapon option */}
+          <TouchableOpacity
+            style={styles.weaponCard}
+            onPress={() => { onSelect(null); onClose(); }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.emptyName}>— No Weapon —</Text>
+          </TouchableOpacity>
+
+          {availableWeapons.map((weapon) => (
+            <TouchableOpacity
+              key={weapon.id}
+              style={styles.weaponCard}
+              onPress={() => { onSelect(weapon); onClose(); }}
+              activeOpacity={0.7}
+            >
+              {/* Name + points */}
+              <View style={styles.cardHeader}>
+                <Text style={styles.weaponName} numberOfLines={2}>{weapon.name}</Text>
+                <Text style={styles.weaponPoints}>{weapon.points} pts</Text>
+              </View>
+
+              <View style={styles.cardDivider} />
+
+              {/* Range row */}
+              <View style={styles.rangeRow}>
+                <View style={styles.rangeLabelCell}>
+                  <Text style={styles.rangeLabel}>Short</Text>
+                </View>
+                <View style={styles.rangeCell}>
+                  <Text style={styles.rangeHeader}>IN</Text>
+                  <Text style={styles.rangeValue}>{fmtRange(weapon.shortRange)}</Text>
+                </View>
+                <View style={styles.rangeCell}>
+                  <Text style={styles.rangeHeader}>ACC</Text>
+                  <Text style={styles.rangeValue}>{weapon.accuracyShort}</Text>
+                </View>
+                <View style={styles.rangeLabelCell}>
+                  <Text style={styles.rangeLabel}>Long</Text>
+                </View>
+                <View style={styles.rangeCell}>
+                  <Text style={styles.rangeValue}>{fmtRange(weapon.longRange)}</Text>
+                </View>
+                <View style={styles.rangeCell}>
+                  <Text style={styles.rangeValue}>{weapon.accuracyLong}</Text>
+                </View>
+              </View>
+
+              {/* Dice / Str */}
+              <Text style={styles.diceStat}>
+                Dice | Str: {weapon.dice} | {weapon.strength}
+              </Text>
+
+              {/* Traits */}
+              {weapon.traits.length > 0 && (
+                <Text style={styles.traits}>{weapon.traits.join(', ')}</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
   },
-  modalContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    width: '90%',
-    maxHeight: '80%',
-    borderWidth: 2,
-    borderColor: '#444',
+  sheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 8, 2, 0.95)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  handleContainer: {
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#444',
+    paddingVertical: 16,
+  },
+  handle: {
+    width: 32,
+    height: 4,
+    borderRadius: 100,
+    backgroundColor: '#79747e',
+  },
+  titleRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   title: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#9dffb2',
+    fontSize: 16,
+    fontFamily: 'RobotoMono_400Regular',
+    lineHeight: 20.8,
+    letterSpacing: 1,
   },
-  closeButton: {
-    padding: 4,
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 163, 35, 0.6)',
+    borderRadius: 5,
+    marginHorizontal: 16,
   },
-  closeButtonText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  weaponList: {
+  listContent: {
     padding: 16,
+    gap: 8,
   },
   weaponCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 4,
+    backgroundColor: '#0d120e',
+    borderRadius: 8,
     padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#444',
+    gap: 6,
   },
-  weaponHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    gap: 8,
   },
   weaponName: {
-    color: '#fff',
+    flex: 1,
+    color: '#8be39d',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontFamily: 'RobotoMono_700Bold',
+    lineHeight: 20.8,
   },
   weaponPoints: {
-    color: '#aaa',
+    color: '#9afcaf',
     fontSize: 12,
+    fontFamily: 'RobotoMono_400Regular',
+    lineHeight: 15.6,
   },
-  statsTable: {
-    marginBottom: 8,
+  cardDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 163, 35, 0.3)',
+    borderRadius: 5,
   },
-  statsRow: {
+  rangeRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+    alignItems: 'center',
+    gap: 4,
+  },
+  rangeLabelCell: {
+    width: 36,
+  },
+  rangeLabel: {
+    color: '#8be39d',
+    fontSize: 11,
+    fontFamily: 'RobotoMono_400Regular',
+  },
+  rangeHeader: {
+    color: '#8be39d',
+    fontSize: 10,
+    fontFamily: 'RobotoMono_400Regular',
+    textAlign: 'center',
+  },
+  rangeCell: {
+    flex: 1,
     alignItems: 'center',
   },
-  statLabel: {
-    color: '#aaa',
-    fontSize: 12,
-    fontWeight: 'bold',
-    minWidth: 80,
+  rangeValue: {
+    color: '#9dffb2',
+    fontSize: 13,
+    fontFamily: 'RobotoMono_700Bold',
+    textAlign: 'center',
   },
-  statValue: {
-    color: '#fff',
+  diceStat: {
+    color: '#8be39d',
     fontSize: 12,
-    marginLeft: 8,
+    fontFamily: 'RobotoMono_400Regular',
+    lineHeight: 15.6,
   },
   traits: {
-    color: '#ff9800',
+    color: '#8be39d',
     fontSize: 11,
-    marginTop: 4,
+    fontFamily: 'RobotoMono_400Regular',
+    lineHeight: 14.3,
+    opacity: 0.8,
   },
-  specialRules: {
-    color: '#d32f2f',
-    fontSize: 10,
-    marginTop: 4,
-    fontStyle: 'italic',
+  emptyName: {
+    color: '#8be39d',
+    fontSize: 14,
+    fontFamily: 'RobotoMono_400Regular',
+    textAlign: 'center',
+    opacity: 0.5,
+    paddingVertical: 4,
   },
 });
-
-

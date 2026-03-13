@@ -85,11 +85,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pip: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    backgroundColor: 'rgba(42, 42, 42, 0.5)',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#0d120e',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -102,26 +101,17 @@ const styles = StyleSheet.create({
   romanNumeralFilled: {
     color: '#000',
   },
-  yellowPip: {
-    borderColor: '#fef618',
-  },
+  yellowPip: {},
   yellowPipFilled: {
     backgroundColor: '#fef618',
-    borderColor: '#fef618',
   },
-  orangePip: {
-    borderColor: '#ff8800',
-  },
+  orangePip: {},
   orangePipFilled: {
     backgroundColor: '#ff8800',
-    borderColor: '#ff8800',
   },
-  redPip: {
-    borderColor: '#ff4400',
-  },
+  redPip: {},
   redPipFilled: {
     backgroundColor: '#ff4400',
-    borderColor: '#ff4400',
   },
 });
 

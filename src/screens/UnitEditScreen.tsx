@@ -9,14 +9,13 @@ import VoidShieldDisplay from '../components/VoidShieldDisplay';
 import PlasmaReactorDisplay from '../components/PlasmaReactorDisplay';
 import StatsPanel from '../components/StatsPanel';
 import WeaponMount from '../components/WeaponMount';
+import WeaponBottomSheet from '../components/WeaponBottomSheet';
 import WeaponSelectionModal from '../components/WeaponSelectionModal';
-import SpecialRulesDisplay from '../components/SpecialRulesDisplay';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { bannerTemplates } from '../data/bannerTemplates';
 import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
-import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
@@ -32,7 +31,6 @@ export default function UnitEditScreen({
   unitId: string;
   onBack?: () => void;
 }) {
-  const { isLg, width } = useBreakpoint();
   const { state, updateUnit, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updatePlasmaReactor } =
     useGame();
   const { titanTemplates } = useTitanTemplates();
@@ -41,7 +39,7 @@ export default function UnitEditScreen({
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
   const [isBannerUpgradePickerOpen, setIsBannerUpgradePickerOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
-  const [weaponPage, setWeaponPage] = useState(0);
+  const [weaponSheetMount, setWeaponSheetMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
   const [nameDraft, setNameDraft] = useState('');
 
@@ -186,11 +184,11 @@ export default function UnitEditScreen({
   const weaponMounts = useMemo(() => {
     if (!unit) return [];
     return [
-      { key: 'leftWeapon' as const, label: 'LEFT ARM', weapon: unit.leftWeapon },
+      { key: 'leftWeapon' as const, label: 'L. ARM', weapon: unit.leftWeapon },
       ...(hasCarapaceWeapon
         ? [{ key: 'carapaceWeapon' as const, label: 'CARAPACE', weapon: unit.carapaceWeapon || null }]
         : []),
-      { key: 'rightWeapon' as const, label: 'RIGHT ARM', weapon: unit.rightWeapon },
+      { key: 'rightWeapon' as const, label: 'R. ARM', weapon: unit.rightWeapon },
     ];
   }, [hasCarapaceWeapon, unit]);
 
@@ -245,7 +243,6 @@ export default function UnitEditScreen({
   const rightPanel = (
     <>
       <View style={styles.reactorShieldRow}>
-        <View style={styles.reactorShieldContainer}>
           <PlasmaReactorDisplay
             current={Math.max(1, unit?.plasmaReactor?.current ?? 1)}
             max={(unit?.plasmaReactor?.max ?? 5)}
@@ -258,35 +255,37 @@ export default function UnitEditScreen({
             max={shieldPipCount}
             onShieldChange={handleShieldChange}
           />
-        </View>
       </View>
     </>
   );
-
-  const weaponCardWidth = Math.min(width - spacing.lg * 2, 360);
-  const weaponCardGap = spacing.md;
-  const weaponSnapInterval = weaponCardWidth + weaponCardGap;
-  const weaponPageCount = weaponMounts.length;
-
-  useEffect(() => {
-    // If the number of cards changes (e.g. no carapace), keep the page index valid
-    setWeaponPage((p) => Math.max(0, Math.min(p, Math.max(0, weaponPageCount - 1))));
-  }, [weaponPageCount]);
 
   const openWeaponModal = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
     setSelectedMount(mount);
     setWeaponModalVisible(true);
   };
 
-  const toggleWeaponDamaged = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
+  const handleMountPress = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
     if (!unit) return;
-    const weapon = unit[mount];
-    if (!weapon) {
+    if (unit[mount]) {
+      setWeaponSheetMount(mount);
+    } else {
       openWeaponModal(mount);
-      return;
     }
+  };
+
+  const handleToggleFromSheet = () => {
+    if (!weaponSheetMount || !unit) return;
+    const weapon = unit[weaponSheetMount];
+    if (!weapon) return;
     const nextStatus = weapon.status === 'disabled' ? 'ready' : 'disabled';
-    updateWeapon(unitId, mount, { ...weapon, status: nextStatus });
+    updateWeapon(unitId, weaponSheetMount, { ...weapon, status: nextStatus });
+    setWeaponSheetMount(null);
+  };
+
+  const handleChangeFromSheet = () => {
+    const mount = weaponSheetMount;
+    setWeaponSheetMount(null);
+    if (mount) openWeaponModal(mount);
   };
 
   const addUpgradeToBanner = (upgradeId: string) => {
@@ -383,13 +382,8 @@ export default function UnitEditScreen({
         </View>
 
         <View style={styles.statsSection}>
-          <StatsPanel unit={unit} style={styles.statsPanel} />
+          <StatsPanel unit={unit} specialRules={effectiveSpecialRules} basePoints={template?.basePoints} style={styles.statsPanel} />
         </View>
-        {effectiveSpecialRules.length > 0 && (
-          <View style={styles.specialRulesRow}>
-            <SpecialRulesDisplay rules={effectiveSpecialRules} />
-          </View>
-        )}
         {rightPanel}
 
         {/* Damage Tracks - Use template for max (so chassis stats are correct); unit for current/criticals */}
@@ -442,64 +436,19 @@ export default function UnitEditScreen({
           )}
         </View>
 
-      {/* Bottom Section - Weapon Mounts */}
-      {isLg ? (
-        <View style={styles.weaponRowLg}>
+      {/* Weapon Mounts */}
+      <View style={styles.weaponSection}>
+        <View style={styles.weaponRow}>
           {weaponMounts.map((m) => (
             <WeaponMount
               key={m.key}
               label={m.label}
               weapon={m.weapon}
-              onPress={() => toggleWeaponDamaged(m.key)}
-              onChangePress={() => openWeaponModal(m.key)}
+              onPress={() => handleMountPress(m.key)}
             />
           ))}
         </View>
-      ) : (
-        <View style={styles.weaponCarousel}>
-          <Text style={styles.weaponSwipeHint}>Swipe ◀ ▶</Text>
-          <ScrollView
-            horizontal
-            pagingEnabled
-            snapToInterval={weaponSnapInterval}
-            decelerationRate="fast"
-            disableIntervalMomentum
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.weaponRowScrollContent}
-            onMomentumScrollEnd={(e) => {
-              const x = e.nativeEvent.contentOffset.x || 0;
-              const page = Math.round(x / weaponSnapInterval);
-              setWeaponPage(Math.max(0, Math.min(page, weaponPageCount - 1)));
-            }}
-          >
-            {weaponMounts.map((m, idx) => (
-              <WeaponMount
-                key={m.key}
-                style={[
-                  styles.weaponCardScroll,
-                  {
-                    width: weaponCardWidth,
-                    marginRight: idx === weaponMounts.length - 1 ? 0 : weaponCardGap,
-                  },
-                ]}
-                label={m.label}
-                weapon={m.weapon}
-                onPress={() => toggleWeaponDamaged(m.key)}
-                onChangePress={() => openWeaponModal(m.key)}
-              />
-            ))}
-          </ScrollView>
-
-          <View style={styles.weaponDots}>
-            {Array.from({ length: weaponPageCount }).map((_, i) => (
-              <View
-                key={i}
-                style={[styles.weaponDot, i === weaponPage && styles.weaponDotActive]}
-              />
-            ))}
-          </View>
-        </View>
-      )}
+      </View>
 
         {/* Banner: Wargear & Upgrades */}
         {unit.unitType === 'banner' && (
@@ -544,6 +493,18 @@ export default function UnitEditScreen({
               ))
             )}
           </View>
+        )}
+
+        {/* Weapon Bottom Sheet */}
+        {weaponSheetMount && unit?.[weaponSheetMount] && (
+          <WeaponBottomSheet
+            visible={!!weaponSheetMount}
+            mountLabel={weaponMounts.find((m) => m.key === weaponSheetMount)?.label ?? ''}
+            weapon={unit[weaponSheetMount]!}
+            onClose={() => setWeaponSheetMount(null)}
+            onChangeWeapon={handleChangeFromSheet}
+            onToggleDisabled={handleToggleFromSheet}
+          />
         )}
 
         {/* Weapon Selection Modal */}
@@ -785,16 +746,10 @@ const styles = StyleSheet.create({
   },
   reactorShieldRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: 'rgba(0, 152, 33, 0.15)',
+    padding: 16,
     marginBottom: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.panel,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   reactorShieldContainer: {
     alignItems: 'flex-end',
@@ -865,49 +820,14 @@ const styles = StyleSheet.create({
   textMuted: {
     color: colors.textMuted,
   },
+  weaponSection: {
+    backgroundColor: 'rgba(0, 152, 33, 0.15)',
+    padding: 16,
+    marginTop: spacing.lg,
+  },
   weaponRow: {
     flexDirection: 'row',
-    marginTop: spacing.lg,
-    flexWrap: 'wrap',
-  },
-  weaponRowLg: {
-    flexDirection: 'row',
-    marginTop: spacing.lg,
-  },
-  weaponRowScrollContent: {
-    paddingVertical: spacing.sm,
-    paddingRight: spacing.lg,
-  },
-  weaponCarousel: {
-    marginTop: spacing.lg,
-  },
-  weaponSwipeHint: {
-    color: colors.textMuted,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  weaponCardScroll: {
-    // Calculated in render for the current device width
-    flexGrow: 0,
-    flexBasis: undefined as any,
-    marginHorizontal: 0,
-    marginRight: spacing.md,
-  },
-  weaponDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: spacing.xs,
-  },
-  weaponDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#444',
-    marginHorizontal: 4,
-  },
-  weaponDotActive: {
-    backgroundColor: colors.textMuted,
+    gap: 8,
   },
   errorText: {
     color: colors.text,
