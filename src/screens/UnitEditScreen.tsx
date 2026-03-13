@@ -622,25 +622,6 @@ export default function UnitEditScreen({
           </View>
         )}
 
-        {/* Weapon Selection Modal */}
-        {template && selectedMount && (
-          <WeaponSelectionModal
-            visible={weaponModalVisible}
-            weapons={effectiveWeapons}
-            mountType={selectedMount === 'carapaceWeapon' ? 'carapace' : 'arm'}
-            onSelect={(weaponTemplate: WeaponTemplate | null) => {
-              if (selectedMount) {
-                const weapon = weaponTemplate ? unitService.createWeaponFromTemplate(weaponTemplate) : null;
-                updateWeapon(unitId, selectedMount, weapon);
-              }
-            }}
-            onClose={() => {
-              setWeaponModalVisible(false);
-              setSelectedMount(null);
-            }}
-          />
-        )}
-
         {/* Banner composition modal */}
         {unit?.unitType === 'banner' && (
           <Modal
@@ -767,6 +748,25 @@ export default function UnitEditScreen({
           </Modal>
         )}
       </ScrollView>
+
+        {/* Weapon Selection Modal — outside ScrollView so it's constrained to ScreenWrapper */}
+        {template && selectedMount && (
+          <WeaponSelectionModal
+            visible={weaponModalVisible}
+            weapons={effectiveWeapons}
+            mountType={selectedMount === 'carapaceWeapon' ? 'carapace' : 'arm'}
+            onSelect={(weaponTemplate: WeaponTemplate | null) => {
+              if (selectedMount) {
+                const weapon = weaponTemplate ? unitService.createWeaponFromTemplate(weaponTemplate) : null;
+                updateWeapon(unitId, selectedMount, weapon);
+              }
+            }}
+            onClose={() => {
+              setWeaponModalVisible(false);
+              setSelectedMount(null);
+            }}
+          />
+        )}
 
         {/* Weapon Bottom Sheet — outside ScrollView so it's constrained to ScreenWrapper */}
         {weaponSheetMount && unit?.[weaponSheetMount] && (
