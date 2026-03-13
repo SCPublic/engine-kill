@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   View,
   Text,
   StyleSheet,
@@ -65,6 +64,8 @@ export default function WeaponSelectionModal({
     }
   }, [visible]);
 
+  if (!internalVisible) return null;
+
   const fmtRange = (v: number | string) => {
     if (v === '-' || v === '' || v === null || v === undefined) return '—';
     if (typeof v === 'number') return `${v}"`;
@@ -77,12 +78,7 @@ export default function WeaponSelectionModal({
   };
 
   return (
-    <Modal
-      visible={internalVisible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <>
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
       </TouchableWithoutFeedback>
@@ -165,7 +161,7 @@ export default function WeaponSelectionModal({
           ))}
         </ScrollView>
       </Animated.View>
-    </Modal>
+    </>
   );
 }
 
@@ -173,6 +169,7 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
+    zIndex: 100,
   },
   sheet: {
     position: 'absolute',
@@ -188,6 +185,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+    zIndex: 101,
   },
   handleContainer: {
     alignItems: 'center',

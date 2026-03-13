@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   View,
   Text,
   StyleSheet,
@@ -79,13 +78,10 @@ export default function WeaponBottomSheet({
     return t;
   };
 
+  if (!internalVisible) return null;
+
   return (
-    <Modal
-      visible={internalVisible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <>
       {/* Backdrop fades in independently */}
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
@@ -192,7 +188,7 @@ export default function WeaponBottomSheet({
           </View>
         </ScrollView>
       </Animated.View>
-    </Modal>
+    </>
   );
 }
 
@@ -200,6 +196,7 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
+    zIndex: 100,
   },
   sheet: {
     position: 'absolute',
@@ -215,6 +212,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+    zIndex: 101,
   },
   handleContainer: {
     alignItems: 'center',
