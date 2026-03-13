@@ -82,6 +82,10 @@ export const storageService = {
           body: sanitizeLocation(unit.damage?.body),
           legs: sanitizeLocation(unit.damage?.legs),
         },
+        bannerKnightCount: unit.bannerKnightCount != null ? Number(unit.bannerKnightCount) : undefined,
+        bannerWeaponIds: Array.isArray(unit.bannerWeaponIds) ? unit.bannerWeaponIds.map(String) : undefined,
+        bannerMeltagunCount: unit.bannerMeltagunCount != null ? Number(unit.bannerMeltagunCount) : undefined,
+        bannerStormspearCount: unit.bannerStormspearCount != null ? Number(unit.bannerStormspearCount) : undefined,
       }));
     } catch (error) {
       console.error('Error loading units:', error);

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, ScrollView, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Button, Card, IconButton, Modal, Text as PaperText } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useRoute, useNavigation } from '@react-navigation/native';
 import DamageTrack from '../components/DamageTrack';
+import IonShieldSavesDisplay from '../components/IonShieldSavesDisplay';
 import VoidShieldDisplay from '../components/VoidShieldDisplay';
 import PlasmaReactorDisplay from '../components/PlasmaReactorDisplay';
 import StatsPanel from '../components/StatsPanel';
@@ -17,8 +18,12 @@ import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
-import { loadWarhoundWeaponsFromBattleScribe } from '../adapters/battlescribe/battlescribeAdapter';
+import {
+  loadQuestorisWeaponsFromBattleScribe,
+  loadWarhoundWeaponsFromBattleScribe,
+} from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import { useLegionTemplates } from '../hooks/useLegionTemplates';
 import { TEMPLATE_ID_ALIASES } from '../utils/constants';
 import { Audio } from 'expo-av';
 
@@ -34,13 +39,16 @@ export default function UnitEditScreen({
   const { state, updateUnit, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updatePlasmaReactor } =
     useGame();
   const { titanTemplates } = useTitanTemplates();
+  const { legionTemplates } = useLegionTemplates();
   const { upgradeTemplates, isLoading: isUpgradesLoading, reload: reloadUpgrades } = useUpgradeTemplates();
 
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
-  const [isBannerUpgradePickerOpen, setIsBannerUpgradePickerOpen] = useState(false);
+  const [isBannerCompositionOpen, setIsBannerCompositionOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [weaponSheetMount, setWeaponSheetMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
+  const [remoteQuestorisWeapons, setRemoteQuestorisWeapons] = useState<WeaponTemplate[] | null>(null);
+  const [remoteQuestorisSpecialRules, setRemoteQuestorisSpecialRules] = useState<string[] | null>(null);
   const [nameDraft, setNameDraft] = useState('');
 
   const unit = state.units.find((u) => u.id === unitId);
@@ -68,18 +76,35 @@ export default function UnitEditScreen({
       : undefined);
   const templateMatchesUnit = Boolean(template && unit);
   const hasCarapaceWeapon = !!template?.defaultStats?.hasCarapaceWeapon;
+  const isBannerUnit =
+    unit?.unitType === 'banner' || (unit?.templateId != null && bannerTemplates.some((t) => t.id === unit.templateId));
 
   const effectiveSpecialRules = useMemo(() => {
-    const chassis = template?.specialRules ?? [];
+    const chassis =
+      unit?.unitType === 'titan'
+        ? (template?.specialRules ?? [])
+        : (bannerTemplates.find((t) => t.id === unit?.templateId)?.specialRules ?? []);
     const traitRules = unit?.princepsTrait?.rules ?? [];
     const upgradeTplList = upgradeTemplates ?? [];
     const wargearRules = (unit?.upgrades ?? []).flatMap((u) => {
       const rules = (u.rules?.length ? u.rules : upgradeTplList.find((t) => t.id === u.id)?.rules) ?? [];
       return rules.map((r) => (u.name ? `${u.name}: ${r}` : r));
     });
-    const combined = [...chassis, ...traitRules, ...wargearRules].filter((s) => s.trim().length > 0);
+    const knightRules =
+      unit?.unitType === 'banner' && unit?.templateId === 'questoris' && remoteQuestorisSpecialRules?.length
+        ? remoteQuestorisSpecialRules
+        : [];
+    const combined = [...chassis, ...knightRules, ...traitRules, ...wargearRules].filter((s) => s.trim().length > 0);
     return combined;
-  }, [template?.specialRules, unit?.princepsTrait?.rules, unit?.upgrades, upgradeTemplates]);
+  }, [
+    template?.specialRules,
+    unit?.templateId,
+    unit?.unitType,
+    unit?.princepsTrait?.rules,
+    unit?.upgrades,
+    upgradeTemplates,
+    remoteQuestorisSpecialRules,
+  ]);
 
   const unitManiple = useMemo(() => {
     if (!unit || unit.unitType !== 'titan') return undefined;
@@ -89,6 +114,12 @@ export default function UnitEditScreen({
     );
   }, [state.activeBattlegroupId, state.maniples, unit?.battlegroupId, unit?.id, unit?.unitType]);
 
+  // Legion for weapon filtering: titan's maniple legion (legion-specific weapons only shown when maniple has that legion).
+  const unitLegion = useMemo(() => {
+    if (!unit || unit.unitType !== 'titan' || !unitManiple?.legionId) return undefined;
+    return legionTemplates.find((l) => l.id === unitManiple.legionId);
+  }, [legionTemplates, unit?.unitType, unitManiple?.legionId]);
+
   const unitBattlegroup = useMemo(() => {
     const found = unit?.battlegroupId ? state.battlegroups.find((bg) => bg.id === unit.battlegroupId) : undefined;
     return found;
@@ -97,7 +128,6 @@ export default function UnitEditScreen({
   // Small-slice BSData integration: Warhound weapon cards.
   useEffect(() => {
     let cancelled = false;
-    // If the template already has a large BSData-derived weapon list, don't double-fetch.
     if (!unit || unit.unitType !== 'titan' || unit.templateId !== 'warhound') return;
     if ((template?.availableWeapons?.length ?? 0) > 6) return;
     (async () => {
@@ -114,7 +144,28 @@ export default function UnitEditScreen({
     };
   }, [unit?.templateId, unit?.unitType, template?.availableWeapons?.length]);
 
-  const effectiveWeapons: WeaponTemplate[] = useMemo(() => {
+  // BattleScribe: Questoris knight weapons (banner terminal shows all weapons from template/BS).
+  useEffect(() => {
+    let cancelled = false;
+    if (!unit || unit.unitType !== 'banner' || unit.templateId !== 'questoris') return;
+    (async () => {
+      try {
+        const { weapons, warnings, specialRules } = await loadQuestorisWeaponsFromBattleScribe();
+        warnings.forEach((w) => console.warn(`[BattleScribe] ${w}`));
+        if (!cancelled) {
+          if (weapons.length > 0) setRemoteQuestorisWeapons(weapons);
+          setRemoteQuestorisSpecialRules(specialRules?.length ? specialRules : null);
+        }
+      } catch (e) {
+        console.warn('[BattleScribe] Failed to load Questoris weapons; using local template.', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unit?.templateId, unit?.unitType]);
+
+  const effectiveWeaponsUnfiltered: WeaponTemplate[] = useMemo(() => {
     if (!unit || !template?.availableWeapons) return [];
     if (unit.unitType === 'titan' && unit.templateId === 'warhound' && remoteWeapons?.length) {
       // Merge: keep local list stable, overlay any BSData-derived fields by matching weapon id.
@@ -132,13 +183,41 @@ export default function UnitEditScreen({
       });
       return merged;
     }
+    // Banners: always use the template's full weapon list (e.g. 5 for Questoris). Overlay BS stats by id, then by name (BS uses different ids).
+    if (unit.unitType === 'banner') {
+      const base = template.availableWeapons;
+      if (unit.templateId === 'questoris' && remoteQuestorisWeapons?.length) {
+        const remoteById = new Map(remoteQuestorisWeapons.map((w) => [w.id, w] as const));
+        const normalizeName = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+        return base.map((w) => {
+          const byId = remoteById.get(w.id);
+          const byName = !byId && remoteQuestorisWeapons.find(
+            (r) => normalizeName(r.name) === normalizeName(w.name)
+          );
+          const r = byId ?? byName;
+          return r ? { ...w, ...r } : w;
+        });
+      }
+      return base;
+    }
     return template.availableWeapons;
-  }, [remoteWeapons, template?.availableWeapons, unit?.templateId, unit?.unitType]);
+  }, [remoteWeapons, remoteQuestorisWeapons, template?.availableWeapons, unit?.templateId, unit?.unitType, unitLegion?.categoryKey]);
 
-  // Backfill newly-added weapon overlay fields (repairRoll/disabledRollLines) onto already-equipped weapons.
-  // This avoids requiring users to re-select weapons after template data changes.
+  // For titans, restrict to weapons available to the unit's legion (from its maniple).
+  const effectiveWeapons: WeaponTemplate[] = useMemo(() => {
+    const list = effectiveWeaponsUnfiltered;
+    if (!unit || unit.unitType !== 'titan') return list;
+    const legioKey = unitLegion?.categoryKey ?? null;
+    return list.filter((w) => {
+      const keys = w.legioKeys ?? [];
+      if (keys.length === 0) return true;
+      return legioKey !== null && keys.includes(legioKey);
+    });
+  }, [effectiveWeaponsUnfiltered, unit?.unitType, unitLegion?.categoryKey]);
+
+  // Backfill newly-added weapon overlay fields (repairRoll/disabledRollLines) onto already-equipped weapons (titans only).
   useEffect(() => {
-    if (!unit) return;
+    if (!unit || unit.unitType !== 'titan') return;
     if (!effectiveWeapons.length) return;
 
     const findWeaponTemplate = (weaponId?: string | null) =>
@@ -183,14 +262,28 @@ export default function UnitEditScreen({
 
   const weaponMounts = useMemo(() => {
     if (!unit) return [];
+    if (unit.unitType === 'banner') {
+      return [];
+    }
+    const carapaceLabel =
+      unit.templateId === 'questoris' ? 'OPTIONAL' : 'CARAPACE';
     return [
       { key: 'leftWeapon' as const, label: 'L. ARM', weapon: unit.leftWeapon },
       ...(hasCarapaceWeapon
-        ? [{ key: 'carapaceWeapon' as const, label: 'CARAPACE', weapon: unit.carapaceWeapon || null }]
+        ? [{ key: 'carapaceWeapon' as const, label: carapaceLabel, weapon: unit.carapaceWeapon || null }]
         : []),
       { key: 'rightWeapon' as const, label: 'R. ARM', weapon: unit.rightWeapon },
     ];
   }, [hasCarapaceWeapon, unit]);
+
+  const bannerWeaponCards = useMemo(() => {
+    if (!unit || unit.unitType !== 'banner' || !effectiveWeapons.length) return [];
+    return effectiveWeapons.map((wt) => ({
+      key: wt.id,
+      weapon: unitService.createWeaponFromTemplate(wt),
+      label: wt.name,
+    }));
+  }, [unit?.unitType, effectiveWeapons]);
 
   const handleDamageChange = (location: 'head' | 'body' | 'legs', value: number) => {
     if (!unit) return;
@@ -351,7 +444,7 @@ export default function UnitEditScreen({
                 if (!trimmed || trimmed === unit.name) return;
                 void updateUnit({ ...unit, name: trimmed });
               }}
-              placeholder="Titan name"
+              placeholder={isBannerUnit ? 'Banner name' : 'Titan name'}
               placeholderTextColor={colors.textMuted}
               style={styles.titleInput}
               autoCorrect={false}
@@ -386,9 +479,42 @@ export default function UnitEditScreen({
         </View>
         {rightPanel}
 
-        {/* Damage Tracks - Use template for max (so chassis stats are correct); unit for current/criticals */}
+        {/* Damage: titan and banner both use head/body/legs location tracks with armor rolls */}
         <View style={styles.damageSection}>
-          {templateMatchesUnit && template && (
+          {unit.unitType === 'banner' ? (() => {
+            const bannerTemplate = bannerTemplates.find((t) => t.id === unit.templateId);
+            if (!bannerTemplate?.defaultStats?.damage) return <IonShieldSavesDisplay />;
+            const d = bannerTemplate.defaultStats.damage;
+            return (
+              <>
+                <DamageTrack
+                  location="head"
+                  damage={{ ...unit.damage.head, max: d.head.max }}
+                  armorRolls={d.head.armorRolls}
+                  criticalEffects={[]}
+                  onDamageChange={(value) => handleDamageChange('head', Math.max(1, Math.min(value, d.head.max)))}
+                  showArmorRolls={true}
+                />
+                <DamageTrack
+                  location="body"
+                  damage={{ ...unit.damage.body, max: d.body.max }}
+                  armorRolls={d.body.armorRolls}
+                  criticalEffects={[]}
+                  onDamageChange={(value) => handleDamageChange('body', Math.max(1, Math.min(value, d.body.max)))}
+                  showArmorRolls={true}
+                />
+                <DamageTrack
+                  location="legs"
+                  damage={{ ...unit.damage.legs, max: d.legs.max }}
+                  armorRolls={d.legs.armorRolls}
+                  criticalEffects={[]}
+                  onDamageChange={(value) => handleDamageChange('legs', Math.max(1, Math.min(value, d.legs.max)))}
+                  showArmorRolls={true}
+                />
+                <IonShieldSavesDisplay />
+              </>
+            );
+          })() : templateMatchesUnit && template ? (
             <>
               <DamageTrack
                 location="head"
@@ -433,7 +559,7 @@ export default function UnitEditScreen({
                 showCriticalEffects={true}
               />
             </>
-          )}
+          ) : null}
         </View>
 
       {/* Weapon Mounts */}
@@ -526,139 +652,128 @@ export default function UnitEditScreen({
           />
         )}
 
-        {/* Banner upgrade picker modal */}
-        {unit.unitType === 'banner' && (
+        {/* Banner composition modal */}
+        {unit?.unitType === 'banner' && (
           <Modal
-            visible={isBannerUpgradePickerOpen}
-            onDismiss={() => setIsBannerUpgradePickerOpen(false)}
+            visible={isBannerCompositionOpen}
+            onDismiss={() => setIsBannerCompositionOpen(false)}
             contentContainerStyle={styles.bannerUpgradeModal}
           >
             <View style={styles.bannerUpgradeModalInner}>
               <View style={styles.bannerUpgradeModalHeader}>
                 <PaperText variant="titleLarge" style={styles.textPrimary}>
-                  Add Upgrade
+                  Banner composition
                 </PaperText>
                 <IconButton
                   icon="close"
                   iconColor={colors.text}
-                  onPress={() => setIsBannerUpgradePickerOpen(false)}
+                  onPress={() => { setIsBannerCompositionOpen(false); setBannerWeaponSlotPicking(null); }}
                 />
               </View>
-              {(() => {
-                if (!unitBattlegroup) {
-                  return (
-                    <PaperText style={styles.sectionEmpty}>
-                      This banner is not in a battlegroup. Set allegiance on the battlegroup to see loyalty-specific wargear.
-                    </PaperText>
+              <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
+                {(() => {
+                  if (!template) {
+                    return (
+                      <PaperText variant="bodySmall" style={{ color: '#ff9800', marginTop: spacing.sm }}>
+                        Unknown banner type (templateId: {unit.templateId ?? 'missing'}). Expected one of: questoris, cerastus.
+                      </PaperText>
+                    );
+                  }
+                  const minK = template.minKnights ?? 3;
+                  const maxK = template.maxKnights ?? 6;
+                  const basePts = template.bannerBasePoints ?? 120;
+                  const ptsPerKnight = template.bannerPointsPerKnight ?? 35;
+                  const K = Math.min(maxK, Math.max(minK, unit.bannerKnightCount ?? minK));
+                  const weaponIds = unit.bannerWeaponIds ?? [];
+                  const meltagun = Math.min(K, Math.max(0, unit.bannerMeltagunCount ?? 0));
+                  const stormspear = Math.min(K, Math.max(0, unit.bannerStormspearCount ?? 0));
+                  const armWeapons = effectiveWeapons.filter((w) => w.mountType === 'arm' && w.id !== 'meltaguns');
+                  const requiredTotal = 2 * K;
+                  const setKnightCount = (newK: number) => {
+                    const n = Math.min(maxK, Math.max(minK, newK));
+                    const nextIds = weaponIds.slice(0, 2 * n);
+                    void updateUnit({
+                      ...unit,
+                      bannerKnightCount: n,
+                      bannerWeaponIds: nextIds,
+                      bannerMeltagunCount: Math.min(n, meltagun),
+                      bannerStormspearCount: Math.min(n, stormspear),
+                    });
+                  };
+                  const adjustWeaponCount = (weaponId: string, delta: number) => {
+                    let next = [...(unit.bannerWeaponIds ?? [])];
+                    if (delta > 0) {
+                      if (next.length < requiredTotal) next.push(weaponId);
+                    } else {
+                      const idx = next.indexOf(weaponId);
+                      if (idx !== -1) next.splice(idx, 1);
+                    }
+                    void updateUnit({ ...unit, bannerWeaponIds: next });
+                  };
+                  const setMeltagunCount = (n: number) => void updateUnit({ ...unit, bannerMeltagunCount: Math.min(K, Math.max(0, n)) });
+                  const setStormspearCount = (n: number) => void updateUnit({ ...unit, bannerStormspearCount: Math.min(K, Math.max(0, n)) });
+                  const weaponPts = (unit.bannerWeaponIds ?? []).reduce(
+                    (sum, id) => sum + (effectiveWeapons.find((w) => w.id === id)?.points ?? 0),
+                    0
                   );
-                }
-                if (isUpgradesLoading) {
-                  return <PaperText style={styles.sectionEmpty}>Loading upgrades…</PaperText>;
-                }
-                const templates = upgradeTemplates ?? [];
-                if (templates.length === 0) {
+                  const meltagunPts = (effectiveWeapons.find((w) => w.id === 'meltaguns')?.points ?? 5) * meltagun;
+                  const stormspearPts = (effectiveWeapons.find((w) => w.id === 'stormspear-rocket-pod')?.points ?? 5) * stormspear;
+                  const totalPts = basePts + (K - minK) * ptsPerKnight + weaponPts + meltagunPts + stormspearPts;
+                  const armWeaponTotal = weaponIds.length;
+                  const warnWeapons = armWeaponTotal !== requiredTotal;
                   return (
-                    <View>
-                      <PaperText style={styles.sectionEmpty}>No upgrades loaded. Wargear is loaded from BattleScribe data.</PaperText>
-                      <Button mode="outlined" onPress={() => reloadUpgrades()} style={{ marginTop: spacing.sm }}>
-                        Retry load
-                      </Button>
-                    </View>
-                  );
-                }
-                return (() => {
-                const nonLegio = (u: (typeof templates)[number]) => (u.legioKeys ?? []).length === 0;
-                const universal = templates.filter(
-                  (u) => u.sourceGroup === 'universal' && nonLegio(u)
-                );
-                const allegianceUsed = unitBattlegroup.allegiance;
-                const loyalty = templates.filter(
-                  (u) => u.sourceGroup === allegianceUsed && nonLegio(u)
-                );
-                const sourceGroupCounts = { universal: 0, loyalist: 0, traitor: 0 };
-                templates.forEach((u) => { if (u.sourceGroup === 'universal') sourceGroupCounts.universal++; else if (u.sourceGroup === 'loyalist') sourceGroupCounts.loyalist++; else if (u.sourceGroup === 'traitor') sourceGroupCounts.traitor++; });
-                const isStandard = (n: string) => {
-                  const ln = n.toLowerCase();
-                  return ln.includes('banner') || ln.includes('standard');
-                };
-                const standards = universal.filter((u) => isStandard(u.name));
-                const universalOther = universal.filter((u) => !isStandard(u.name));
-                const existingIds = new Set((unit.upgrades ?? []).map((u) => u.id));
-                const filterExisting = (list: typeof universal) => list.filter((u) => !existingIds.has(u.id));
-
-                const hasAnyWargear = universal.length > 0 || loyalty.length > 0;
-                if (!hasAnyWargear) {
-                  return (
-                    <PaperText style={styles.sectionEmpty}>
-                      No {allegianceUsed === 'traitor' ? 'traitor' : 'loyalist'} wargear loaded. Wargear is loaded from BattleScribe data.
-                    </PaperText>
-                  );
-                }
-
-                return (
-                  <FlatList
-                    data={[
-                      { kind: 'header' as const, title: 'Universal' },
-                      ...(standards.length
-                        ? [
-                            { kind: 'subheader' as const, title: 'Standards' },
-                            ...filterExisting(standards).map((u) => ({ kind: 'item' as const, u })),
-                          ]
-                        : []),
-                      ...(universalOther.length
-                        ? [
-                            { kind: 'subheader' as const, title: 'Other' },
-                            ...filterExisting(universalOther).map((u) => ({ kind: 'item' as const, u })),
-                          ]
-                        : []),
-                      { kind: 'header' as const, title: allegianceUsed === 'traitor' ? 'Traitor' : 'Loyalist' },
-                      ...filterExisting(loyalty).map((u) => ({ kind: 'item' as const, u })),
-                    ]}
-                    keyExtractor={(row, idx) => {
-                      if (row.kind === 'item') return `u:${row.u.id}`;
-                      if (row.kind === 'header') return `h:${row.title}:${idx}`;
-                      if (row.kind === 'subheader') return `sh:${row.title}:${idx}`;
-                      return `e:${idx}`;
-                    }}
-                    renderItem={({ item }) => {
-                      if (item.kind === 'header') {
-                        return (
-                          <PaperText variant="titleSmall" style={[styles.sectionTitle, { marginTop: spacing.sm }]}>
-                            {item.title}
+                    <>
+                      <View style={{ marginTop: spacing.sm }}>
+                        <PaperText variant="labelMedium" style={styles.textPrimary}>Knights</PaperText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                          <IconButton icon="minus" size={20} onPress={() => setKnightCount(K - 1)} disabled={K <= minK} />
+                          <PaperText variant="titleMedium" style={styles.textPrimary}>{K}</PaperText>
+                          <IconButton icon="plus" size={20} onPress={() => setKnightCount(K + 1)} disabled={K >= maxK} />
+                          <PaperText variant="bodySmall" style={styles.textMuted}>({minK}–{maxK})</PaperText>
+                        </View>
+                      </View>
+                      <View style={{ marginTop: spacing.md }}>
+                        <PaperText variant="labelMedium" style={styles.textPrimary}>Weapons</PaperText>
+                        {warnWeapons && (
+                          <PaperText variant="bodySmall" style={{ color: '#ff9800', marginTop: spacing.xs }}>
+                            Total is {armWeaponTotal}; need {requiredTotal}.
                           </PaperText>
-                        );
-                      }
-                      if (item.kind === 'subheader') {
-                        return (
-                          <PaperText variant="labelMedium" style={[styles.textMuted, { marginTop: spacing.xs }]}>
-                            {item.title}
-                          </PaperText>
-                        );
-                      }
-                      return (
-                        <Card
-                          key={item.u.id}
-                          style={styles.upgradeCard}
-                          onPress={() => {
-                            addUpgradeToBanner(item.u.id);
-                            setIsBannerUpgradePickerOpen(false);
-                          }}
-                        >
-                          <Card.Content>
-                            <PaperText variant="titleMedium" style={styles.textPrimary}>
-                              {item.u.name}
-                            </PaperText>
-                            <PaperText variant="bodySmall" style={styles.textMuted}>
-                              {item.u.points} pts
-                            </PaperText>
-                          </Card.Content>
-                        </Card>
-                      );
-                    }}
-                  />
-                );
-              })();
-              })()}
+                        )}
+                        {armWeapons.map((w) => {
+                          const count = weaponIds.filter((id) => id === w.id).length;
+                          return (
+                            <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                              <PaperText variant="bodyMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</PaperText>
+                              <IconButton icon="minus" size={20} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
+                              <PaperText variant="titleMedium" style={styles.textPrimary}>{count}</PaperText>
+                              <IconButton icon="plus" size={20} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
+                            </View>
+                          );
+                        })}
+                      </View>
+                      <View style={{ marginTop: spacing.md }}>
+                        <PaperText variant="labelMedium" style={styles.textPrimary}>Meltaguns</PaperText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                          <IconButton icon="minus" size={20} onPress={() => setMeltagunCount(meltagun - 1)} disabled={meltagun <= 0} />
+                          <PaperText variant="titleMedium">{meltagun}</PaperText>
+                          <IconButton icon="plus" size={20} onPress={() => setMeltagunCount(meltagun + 1)} disabled={meltagun >= K} />
+                        </View>
+                      </View>
+                      <View style={{ marginTop: spacing.md }}>
+                        <PaperText variant="labelMedium" style={styles.textPrimary}>Stormspear rocket pod</PaperText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                          <IconButton icon="minus" size={20} onPress={() => setStormspearCount(stormspear - 1)} disabled={stormspear <= 0} />
+                          <PaperText variant="titleMedium">{stormspear}</PaperText>
+                          <IconButton icon="plus" size={20} onPress={() => setStormspearCount(stormspear + 1)} disabled={stormspear >= K} />
+                        </View>
+                      </View>
+                      <View style={{ marginTop: spacing.lg }}>
+                        <PaperText variant="titleMedium" style={styles.textPrimary}>Total: {totalPts} pts</PaperText>
+                      </View>
+                    </>
+                  );
+                })()}
+              </ScrollView>
             </View>
           </Modal>
         )}
@@ -762,6 +877,41 @@ const styles = StyleSheet.create({
   damageSection: {
     marginTop: spacing.sm,
     marginHorizontal: 0, // Keep within content padding so borders are visible
+  },
+  bannerDamageRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  bannerWeaponsSection: {
+    marginTop: spacing.lg,
+  },
+  bannerWeaponsScrollContent: {
+    paddingVertical: spacing.sm,
+    paddingRight: spacing.lg,
+    flexGrow: 0,
+  },
+  bannerWeaponCard: {
+    flexGrow: 0,
+  },
+  bannerUpgradeCard: {
+    flexGrow: 0,
+    backgroundColor: colors.panel,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bannerAddUpgradeCard: {
+    flexGrow: 0,
+    backgroundColor: colors.panel,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
   },
   upgradesSection: {
     marginTop: spacing.lg,

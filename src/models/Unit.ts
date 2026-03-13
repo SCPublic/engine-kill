@@ -98,6 +98,16 @@ export interface Unit {
   isPrincepsSeniores?: boolean;
   princepsTrait?: PrincepsTrait | null;
   upgrades?: UnitUpgrade[];
+
+  // Banner-only: single damage track and ion shield reference
+  structurePoints?: { current: number; max: number };
+  ionShieldSaves?: string[];
+
+  // Banner composition: variable knights and weapon loadouts
+  bannerKnightCount?: number; // e.g. 3–6 for Questoris
+  bannerWeaponIds?: string[]; // 2 weapons per knight (arm only), length = 2 * bannerKnightCount
+  bannerMeltagunCount?: number; // 0 to bannerKnightCount (max 1 per knight)
+  bannerStormspearCount?: number; // 0 to bannerKnightCount (max 1 per knight)
   
   // Stats
   stats: {

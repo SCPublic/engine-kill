@@ -46,6 +46,8 @@ export interface BattleScribeAllTitansLoadResult {
 export interface BattleScribeWeaponsLoadResult {
   weapons: WeaponTemplate[];
   warnings: string[];
+  /** Knight/chassis special rules from BattleScribe (e.g. Lord Scion, Agile). */
+  specialRules: string[];
 }
 
 export interface BattleScribeManiplesLoadResult {
@@ -298,15 +300,42 @@ function inferMountTypeFromContextNames(contextNames: string[]): 'arm' | 'carapa
   return 'arm';
 }
 
+/** True only when we're inside an actual weapon slot (Arms, Carapace, Left/Right arm). Excludes top-level "Weapons" entryLinks (e.g. Ardex Defensor Cannon on Warlord, which is a special rule not a mountable weapon). */
 function isWeaponishContext(contextNames: string[]): boolean {
   const ctx = contextNames.join(' ').toLowerCase();
   return (
-    ctx.includes('weapon') ||
     ctx.includes('arm') ||
     ctx.includes('carapace') ||
     ctx.includes('left') ||
     ctx.includes('right')
   );
+}
+
+/** Collect targetIds of entryLinks under "Weapons" but not in a weapon slot (e.g. Ardex Defensor Cannon). Rules from these entries are merged into chassis special rules; source of truth is GST, not app code. */
+function collectRuleOnlyEntryLinkTargetIds(root: XmlNode): string[] {
+  const out: string[] = [];
+  const walk = (node: XmlNode, contextNames: string[]) => {
+    const nextContext =
+      node.name === 'selectionEntryGroup' || node.name === 'selectionEntry'
+        ? [...contextNames, node.attributes.name || '']
+        : contextNames;
+    if (node.name === 'entryLink') {
+      const targetId = node.attributes.targetId;
+      if (targetId) {
+        const ctx = nextContext.join(' ').toLowerCase();
+        const inWeaponGroup = ctx.includes('weapon');
+        const inWeaponSlot =
+          ctx.includes('arm') ||
+          ctx.includes('carapace') ||
+          ctx.includes('left') ||
+          ctx.includes('right');
+        if (inWeaponGroup && !inWeaponSlot) out.push(targetId);
+      }
+    }
+    node.children.forEach((c) => walk(c, nextContext));
+  };
+  walk(root, [root.attributes.name || '']);
+  return out;
 }
 
 function collectEntryLinks(root: XmlNode): Array<{ targetId: string; mountType: 'arm' | 'carapace' }> {
@@ -432,6 +461,15 @@ function selectionEntryToWeaponTemplate(
   const traits = splitTraits(chars['Traits'] ?? chars['Trait'] ?? chars['Special Rules'] ?? chars['Special']);
   const specialRules: string[] = [];
 
+  // Legion-specific weapons: same pattern as upgrades (categoryLink name starting with Legio, excluding LegioSpecificWargear).
+  const legioKeys = Array.from(
+    new Set(
+      findAll(se, (n) => n.name === 'categoryLink')
+        .map((c) => String(c.attributes.name ?? '').trim())
+        .filter((n) => n.toLowerCase().startsWith('legio') && n !== 'LegioSpecificWargear')
+    )
+  );
+
   return {
     id,
     name: displayName,
@@ -445,6 +483,7 @@ function selectionEntryToWeaponTemplate(
     traits,
     specialRules,
     mountType,
+    ...(legioKeys.length ? { legioKeys } : {}),
   };
 }
 
@@ -488,6 +527,20 @@ function getRulesFromSelectionEntry(selectionEntry: XmlNode): string[] {
   return rules;
 }
 
+/** Deduplicate special rules by content (case-insensitive). Keeps first occurrence so the same rule from different sources (e.g. "Ardex Defensor Cannon" vs "ARDEX DEFENSOR CANNON") is shown once. */
+function deduplicateSpecialRules(rules: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of rules) {
+    const key = r.trim().toLowerCase();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      out.push(r);
+    }
+  }
+  return out;
+}
+
 function getCharacteristicMap(selectionEntry: XmlNode): Record<string, string> {
   // Find characteristics for any profile under this selectionEntry.
   // We keep a flat map by characteristic name; later profiles can overwrite earlier ones.
@@ -500,7 +553,10 @@ function getCharacteristicMap(selectionEntry: XmlNode): Record<string, string> {
     for (const characteristic of characteristics.children) {
       if (characteristic.name !== 'characteristic') continue;
       const cname = characteristic.attributes.name?.trim();
-      const cval = characteristic.text?.trim();
+      const cval =
+        characteristic.attributes.value?.trim() ??
+        characteristic.text?.trim() ??
+        '';
       if (cname && cval) out[cname] = cval;
     }
   }
@@ -581,7 +637,10 @@ function getWeaponProfileCharacteristics(selectionEntry: XmlNode): Record<string
     for (const characteristic of characteristics.children) {
       if (characteristic.name !== 'characteristic') continue;
       const cname = characteristic.attributes.name?.trim();
-      const cval = characteristic.text?.trim();
+      const cval =
+        characteristic.attributes.value?.trim() ??
+        characteristic.text?.trim() ??
+        '';
       if (cname && cval) out[cname] = cval;
     }
     // If we found a weapon-typed profile, stop after first to avoid mixing multiple profiles.
@@ -816,7 +875,16 @@ export async function loadAllTitanTemplatesFromBattleScribe(
 
       const points = parsePointsFromSelectionEntry(se);
       const max = extractChassisMaxValues(chars);
-      const specialRules = getRulesFromSelectionEntry(se);
+      const chassisRules = getRulesFromSelectionEntry(se);
+      const ruleOnlyTargetIds = collectRuleOnlyEntryLinkTargetIds(se);
+      let specialRules = [...chassisRules];
+      for (const targetId of ruleOnlyTargetIds) {
+        const target = byId.get(targetId);
+        if (target) {
+          specialRules = [...specialRules, ...getRulesFromSelectionEntry(target)];
+        }
+      }
+      specialRules = deduplicateSpecialRules(specialRules);
 
       const { links, defaultLeftWeaponId, defaultRightWeaponId } = collectWeaponLinksAndDefaults(se, byId);
       const weapons: WeaponTemplate[] = [];
@@ -838,7 +906,7 @@ export async function loadAllTitanTemplatesFromBattleScribe(
         // Merge: keep best-known values; merge special rules (BSData may add more from another file)
         const mergedRules =
           existing.specialRules.length > 0 || specialRules.length > 0
-            ? [...new Set([...existing.specialRules, ...specialRules])]
+            ? deduplicateSpecialRules([...existing.specialRules, ...specialRules])
             : [];
         chassisById.set(key, {
           id: key,
@@ -913,16 +981,10 @@ export async function loadAllTitanTemplatesFromBattleScribe(
         : [];
     const hasCarapaceWeapon = c.weapons.some((w) => w.mountType === 'carapace');
 
-    let mergedSpecialRules =
+    const mergedSpecialRules =
       c.specialRules.length > 0 || overrideSpecialRules.length > 0
-        ? [...new Set([...c.specialRules, ...overrideSpecialRules])]
+        ? deduplicateSpecialRules([...c.specialRules, ...overrideSpecialRules])
         : [];
-    // Fallback: Warlord always gets Ardex Defensor rule (paper command terminals show it).
-    const ARDEX_DEFENSOR_RULE =
-      'ARDEX DEFENSOR CANNON: When the Titan is activated in the Combat phase, each enemy unit that is within its Front or Rear arc, and within 6", suffers D3 Strength 5 hits.';
-    if (chassisKey === 'warlord' && !mergedSpecialRules.some((r) => r.includes('ARDEX DEFENSOR'))) {
-      mergedSpecialRules = [...mergedSpecialRules, ARDEX_DEFENSOR_RULE];
-    }
     templates.push({
       ...base,
       name: c.name || base.name,
@@ -1041,77 +1103,8 @@ export async function loadWarhoundWeaponsFromBattleScribe(
     return out;
   };
 
-  const upsertWeaponFromSelectionEntry = (se: XmlNode, mountType: 'arm' | 'carapace') => {
-    const rawName = se.attributes.name?.trim();
-    if (!rawName) return;
-    const displayName = sanitizeBattleScribeName(rawName);
-    const bsId = se.attributes.id;
-
-    // Stable IDs:
-    // - If this matches one of our known local Warhound weapons, use the local id (keeps persistence/backfill stable).
-    // - Otherwise, use a stable BSData-derived id.
-    const knownLocalId = weaponIdForWarhoundName(rawName);
-    const id = knownLocalId ?? (bsId ? `bs:${bsId}` : `bs:${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
-
-    const points = parsePointsFromSelectionEntry(se) ?? 0;
-    const chars = getWeaponProfileCharacteristics(se);
-
-    // Range
-    const rangeText =
-      chars['Range'] ??
-      chars['Rng'] ??
-      chars['RNG'] ??
-      chars['Short/Long'] ??
-      chars['Short / Long'] ??
-      '';
-    const { shortRange, longRange } = parseShortLongFromRangeText(rangeText);
-
-    // Accuracy (varies; keep strings for +1/-1/-)
-    const accShort =
-      chars['Acc (Short)'] ??
-      chars['Accuracy (Short)'] ??
-      chars['Short Acc'] ??
-      chars['Acc Short'] ??
-      chars['ACC Short'] ??
-      chars['Acc'] ??
-      '-';
-    const accLong =
-      chars['Acc (Long)'] ??
-      chars['Accuracy (Long)'] ??
-      chars['Long Acc'] ??
-      chars['Acc Long'] ??
-      chars['ACC Long'] ??
-      chars['Acc'] ??
-      '-';
-
-    const dice = parsePlusNumber(chars['Dice'] ?? chars['D'] ?? chars['Shots']) ?? 0;
-    const strength = parsePlusNumber(chars['Strength'] ?? chars['Str'] ?? chars['S']) ?? 0;
-
-    const traits = splitTraits(chars['Traits'] ?? chars['Trait'] ?? chars['Special Rules'] ?? chars['Special']);
-    const specialRules: string[] = [];
-
-    // If we already captured this weapon from another file, keep the first one unless this one is "better" (more info).
-    const existing = foundById.get(id);
-    const score = (w: WeaponTemplate) =>
-      Number(!!w.points) + Number(w.dice !== 0) + Number(w.strength !== 0) + Number(w.traits.length > 0);
-
-    const next: WeaponTemplate = {
-      id,
-      name: displayName,
-      points,
-      shortRange,
-      longRange,
-      accuracyShort: accShort,
-      accuracyLong: accLong,
-      dice,
-      strength,
-      traits,
-      specialRules,
-      mountType,
-    };
-
-    if (!existing || score(next) > score(existing)) foundById.set(id, next);
-  };
+  const weaponScore = (w: WeaponTemplate) =>
+    Number(!!w.points) + Number(w.dice !== 0) + Number(w.strength !== 0) + Number(w.traits.length > 0);
 
   for (const xml of xmlStrings) {
     const doc = parseXml(xml);
@@ -1137,7 +1130,10 @@ export async function loadWarhoundWeaponsFromBattleScribe(
       for (const link of links) {
         const target = byId.get(link.targetId);
         if (!target) continue;
-        upsertWeaponFromSelectionEntry(target, link.mountType);
+        const wt = selectionEntryToWeaponTemplate(target, link.mountType);
+        if (!wt) continue;
+        const existing = foundById.get(wt.id);
+        if (!existing || weaponScore(wt) > weaponScore(existing)) foundById.set(wt.id, wt);
       }
     }
   }
@@ -1149,7 +1145,202 @@ export async function loadWarhoundWeaponsFromBattleScribe(
     );
   }
 
-  return { weapons, warnings };
+  return { weapons, warnings, specialRules: [] };
+}
+
+/**
+ * Load Questoris Knight weapon profiles from BattleScribe (titan-data / Household.cat etc.).
+ * Used to display all knight weapons on the banner terminal; stats come from BS when available.
+ */
+export async function loadQuestorisWeaponsFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribeWeaponsLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  type LinkedWeaponRef = { targetId: string; linkNode: XmlNode; mountType: 'arm' | 'carapace' };
+  const foundById = new Map<string, WeaponTemplate>();
+
+  const inferMountTypeFromContext = (contextNames: string[]): 'arm' | 'carapace' => {
+    const ctx = contextNames.join(' ').toLowerCase();
+    if (ctx.includes('carapace') || ctx.includes('optional') || ctx.includes('stormspear')) return 'carapace';
+    return 'arm';
+  };
+
+  const collectWeaponEntryLinks = (entry: XmlNode): LinkedWeaponRef[] => {
+    const out: LinkedWeaponRef[] = [];
+    const walk = (node: XmlNode, contextNames: string[]) => {
+      const nextContext =
+        node.name === 'selectionEntryGroup' || node.name === 'selectionEntry'
+          ? [...contextNames, node.attributes.name || '']
+          : contextNames;
+      if (node.name === 'entryLink') {
+        const targetId = node.attributes.targetId;
+        if (targetId) {
+          out.push({
+            targetId,
+            linkNode: node,
+            mountType: inferMountTypeFromContext(nextContext),
+          });
+        }
+      }
+      node.children.forEach((c) => walk(c, nextContext));
+    };
+    walk(entry, [entry.attributes.name || '']);
+    return out;
+  };
+
+  const upsertWeapon = (se: XmlNode, mountType: 'arm' | 'carapace', pointsOverride?: number) => {
+    const rawName = se.attributes.name?.trim();
+    if (!rawName) return;
+    const displayName = sanitizeBattleScribeName(rawName);
+    const bsId = se.attributes.id;
+    const id = bsId ? `bs:${bsId}` : `bs:${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+    const points = pointsOverride !== undefined ? pointsOverride : (parsePointsFromSelectionEntry(se) ?? 0);
+    const chars = getWeaponProfileCharacteristics(se);
+
+    const rangeText =
+      chars['Range'] ?? chars['Rng'] ?? chars['RNG'] ?? chars['Short/Long'] ?? chars['Short / Long'] ?? '';
+    const shortRangeExplicit = chars['Short Range'] ?? chars['Short range'];
+    const longRangeExplicit = chars['Long Range'] ?? chars['Long range'];
+    const { shortRange, longRange } =
+      shortRangeExplicit || longRangeExplicit
+        ? {
+            shortRange: shortRangeExplicit ? normalizeRangePart(shortRangeExplicit) : '-',
+            longRange: longRangeExplicit ? normalizeRangePart(longRangeExplicit) : '-',
+          }
+        : parseShortLongFromRangeText(rangeText);
+
+    const accShort =
+      chars['Acc (Short)'] ??
+      chars['Accuracy (Short)'] ??
+      chars['Short Accuracy'] ??
+      chars['Short Acc'] ??
+      chars['Acc Short'] ??
+      chars['ACC Short'] ??
+      chars['Acc'] ??
+      '-';
+    const accLong =
+      chars['Acc (Long)'] ??
+      chars['Accuracy (Long)'] ??
+      chars['Long Accuracy'] ??
+      chars['Long Acc'] ??
+      chars['Acc Long'] ??
+      chars['ACC Long'] ??
+      chars['Acc'] ??
+      '-';
+
+    const dice = parsePlusNumber(chars['Dice'] ?? chars['D'] ?? chars['Shots']) ?? 0;
+    const strength = parsePlusNumber(chars['Strength'] ?? chars['Str'] ?? chars['S']) ?? 0;
+    const traits = splitTraits(chars['Traits'] ?? chars['Trait'] ?? chars['Special Rules'] ?? chars['Special']);
+    const specialRules: string[] = [];
+
+    const next: WeaponTemplate = {
+      id,
+      name: displayName,
+      points,
+      shortRange,
+      longRange,
+      accuracyShort: accShort,
+      accuracyLong: accLong,
+      dice,
+      strength,
+      traits,
+      specialRules,
+      mountType,
+    };
+    const existing = foundById.get(id);
+    const score = (w: WeaponTemplate) =>
+      Number(!!w.points) + Number(w.dice !== 0) + Number(w.strength !== 0) + Number(w.traits.length > 0);
+    if (!existing || score(next) > score(existing)) foundById.set(id, next);
+  };
+
+  const byId = new Map<string, XmlNode>();
+  const questorisEntries: XmlNode[] = [];
+
+  for (const xml of xmlStrings) {
+    const doc = parseXml(xml);
+    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
+    const selectionEntryGroups = findAll(doc, (n) => n.name === 'selectionEntryGroup');
+    selectionEntries.forEach((se) => {
+      const id = se.attributes.id;
+      if (id) byId.set(id, se);
+    });
+    selectionEntryGroups.forEach((g) => {
+      const id = g.attributes.id;
+      if (id) byId.set(id, g);
+    });
+    for (const se of selectionEntries) {
+      const name = (se.attributes.name || '').toLowerCase();
+      const type = (se.attributes.type || '').toLowerCase();
+      if (name.includes('questoris') && (type === 'unit' || type === 'model' || type === '')) {
+        questorisEntries.push(se);
+      }
+    }
+  }
+
+  const resolveAndUpsert = (link: LinkedWeaponRef) => {
+    const target = byId.get(link.targetId);
+    if (!target) return;
+    if (target.name === 'selectionEntryGroup') {
+      const subLinks = collectWeaponEntryLinks(target);
+      for (const sub of subLinks) {
+        resolveAndUpsert(sub);
+      }
+      return;
+    }
+    if (target.name === 'selectionEntry') {
+      const pointsFromLink = parsePointsFromSelectionEntry(link.linkNode);
+      const pointsFromEntry = parsePointsFromSelectionEntry(target);
+      const points = pointsFromLink ?? pointsFromEntry ?? 0;
+      upsertWeapon(target, link.mountType, points);
+    }
+  };
+
+  const specialRulesSet = new Set<string>();
+  const baseQuestorisName = 'questoris knight';
+  const questorisEntryNames: string[] = [];
+  for (const entry of questorisEntries) {
+    const links = collectWeaponEntryLinks(entry);
+    for (const link of links) {
+      resolveAndUpsert(link);
+    }
+    const rawName = (entry.attributes.name ?? '').trim();
+    questorisEntryNames.push(rawName || '(no name)');
+    const entryName = rawName.toLowerCase();
+    if (entryName === baseQuestorisName) {
+      getRulesFromSelectionEntry(entry).forEach((r) => specialRulesSet.add(r));
+    }
+  }
+
+  if (questorisEntries.length > 0 && specialRulesSet.size === 0) {
+    warnings.push(
+      `No Questoris Knight rules loaded: expected a selection entry named exactly "Questoris Knight". ` +
+        `Catalog entries found: ${questorisEntryNames.join('; ')}. ` +
+        `Fix the catalog name or add an entry "Questoris Knight" with Agile and Lord Scion rules.`
+    );
+  }
+
+  const weapons = Array.from(foundById.values());
+  if (weapons.length === 0) {
+    warnings.push(
+      'No Questoris-linked weapon entries were resolved from BattleScribe (using local banner template weapons).'
+    );
+  }
+
+  return { weapons, warnings, specialRules: Array.from(specialRulesSet) };
 }
 
 function inferManipleTemplateIdFromName(name: string, bsId?: string): string {
@@ -1579,10 +1770,13 @@ export async function loadUpgradeTemplatesFromBattleScribe(
   }
 
   // Known group IDs in Adeptus Titanicus 2018.gst
+  // Legio Specific Wargear (187f-a18f-cafe-4ae6) contains legion-only upgrades (e.g. =Mortis= Remains of the Fallen,
+  // The Warmaster's Beneficence). We load them as universal; legioKeys on each template control visibility per legion.
   const groupIds: Array<{ id: string; sourceGroup: UpgradeTemplate['sourceGroup'] }> = [
     { id: 'f360-b4bd-e6cd-d077', sourceGroup: 'universal' },
     { id: 'c354-c2bb-8d84-0770', sourceGroup: 'loyalist' },
     { id: '3bce-46aa-99ca-8f60', sourceGroup: 'traitor' },
+    { id: '187f-a18f-cafe-4ae6', sourceGroup: 'universal' }, // Legio Specific Wargear
   ];
 
   const upgrades: UpgradeTemplate[] = [];
@@ -1598,13 +1792,14 @@ export async function loadUpgradeTemplatesFromBattleScribe(
     });
 
     // Always include Princeps Seniores rules if present (used by titan config).
+    // Shown as a toggle on titans, not as an upgrade in the picker.
     // selectionEntry id: 2dc5-e9bf-6f6e-39a5 in Adeptus Titanicus 2018.gst
     const princeps = byId.get('2dc5-e9bf-6f6e-39a5');
     if (princeps) {
       const tpl = selectionEntryToUpgradeTemplate(princeps, 'universal', byId);
       if (tpl && !seen.has(tpl.id)) {
         seen.add(tpl.id);
-        upgrades.push(tpl);
+        upgrades.push({ ...tpl, titanToggleOnly: true });
       }
     }
 
@@ -1626,7 +1821,23 @@ export async function loadUpgradeTemplatesFromBattleScribe(
     }
   }
 
-  upgrades.sort((a, b) => a.name.localeCompare(b.name));
+  const hasMeltaguns = upgrades.some((u) => u.name.toLowerCase().includes('meltagun'));
+  if (hasMeltaguns) {
+    upgrades.forEach((u) => {
+      if (u.name.toLowerCase().includes('meltagun')) (u as UpgradeTemplate).bannerOnly = true;
+    });
+    upgrades.sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    upgrades.push({
+      id: 'bsupg:meltaguns',
+      name: 'Meltaguns',
+      points: 5,
+      rules: ['Knight Banner wargear: one Knight in the Banner may replace one of its weapons with Meltaguns.'],
+      sourceGroup: 'universal',
+      bannerOnly: true,
+    });
+    upgrades.sort((a, b) => a.name.localeCompare(b.name));
+  }
   if (upgrades.length === 0) warnings.push('No wargear upgrades were resolved from BattleScribe data.');
   return { upgrades, warnings };
 }
