@@ -8,6 +8,14 @@ export const BSDATA_ADEPTUS_TITANICUS_BASE_URL =
 export const TITAN_DATA_BASE_URL =
   'https://raw.githubusercontent.com/SCPublic/titan-data/master/';
 
+/**
+ * Data source used by the app. For local/web dev, set EXPO_PUBLIC_DATA_BASE_URL to avoid CORS
+ * (e.g. serve titan-data: npx serve path/to/titan-data -p 3333, then
+ * EXPO_PUBLIC_DATA_BASE_URL=http://localhost:3333/).
+ */
+export const DEFAULT_DATA_BASE_URL =
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_DATA_BASE_URL) || TITAN_DATA_BASE_URL;
+
 /** Data repo display: GitHub repo slug and URL for UI. */
 export const TITAN_DATA_REPO_SLUG = 'SCPublic/titan-data';
 export const TITAN_DATA_GITHUB_URL = 'https://github.com/SCPublic/titan-data';
@@ -21,9 +29,6 @@ export const ENGINE_KILL_REPO_SLUG = 'SCPublic/engine-kill';
 export const ENGINE_KILL_GITHUB_URL = 'https://github.com/SCPublic/engine-kill';
 export const ENGINE_KILL_COMMITS_API_URL =
   'https://api.github.com/repos/SCPublic/engine-kill/commits/main';
-
-/** Data source used by the app. Change this to switch between BSData and titan-data. */
-export const DEFAULT_DATA_BASE_URL = TITAN_DATA_BASE_URL;
 
 /**
  * Legacy template ids (BattleScribe selectionEntry ids) → canonical chassis id.

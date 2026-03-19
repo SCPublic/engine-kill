@@ -3,15 +3,24 @@ import { View, StyleSheet, Text, TouchableOpacity, Animated, ViewStyle } from 'r
 import { Unit } from '../models/Unit';
 
 interface StatsPanelProps {
-  unit: Unit;
+  /** When provided, the panel shows C/BS/S/WS/M/SC stat row. When omitted, only title + specialRules are shown (e.g. for maniple rules). */
+  unit?: Unit | null;
   specialRules?: string[];
   basePoints?: number;
+  /** Header label; default "CORE STATS" when unit is present, "RULES" when unit is absent. */
+  title?: string;
+  /** When false, content is always visible (no expand/collapse). Default true. */
+  collapsible?: boolean;
   style?: ViewStyle;
 }
 
-export default function StatsPanel({ unit, specialRules = [], basePoints, style }: StatsPanelProps) {
+export default function StatsPanel({ unit, specialRules = [], basePoints, title, collapsible = true, style }: StatsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const animatedHeight = useRef(new Animated.Value(0)).current;
+
+  const headerLabel = title ?? (unit != null ? 'CORE STATS' : 'RULES');
+  const showStatsRow = unit != null;
+  const alwaysExpanded = !collapsible;
 
   const toggleOpen = () => {
     const toValue = isOpen ? 0 : 1;
@@ -32,17 +41,9 @@ export default function StatsPanel({ unit, specialRules = [], basePoints, style 
     return { keyword: rule, description: '' };
   });
 
-  return (
-    <View style={[styles.container, style]}>
-      <TouchableOpacity
-        style={[styles.header, isOpen && styles.headerExpanded]}
-        onPress={toggleOpen}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.headerText}>CORE STATS</Text>
-      </TouchableOpacity>
-
-      <Animated.View style={[
+  const contentStyle = alwaysExpanded
+    ? [styles.expandedContent, styles.expandedContentStatic]
+    : [
         styles.expandedContent,
         {
           maxHeight: animatedHeight.interpolate({
@@ -58,8 +59,28 @@ export default function StatsPanel({ unit, specialRules = [], basePoints, style 
             inputRange: [0, 1],
             outputRange: [0, 8],
           }),
-        }
-      ]}>
+        },
+      ];
+
+  const ContentWrapper = alwaysExpanded ? View : Animated.View;
+
+  return (
+    <View style={[styles.container, style]}>
+      {collapsible ? (
+        <TouchableOpacity
+          style={[styles.header, isOpen && styles.headerExpanded]}
+          onPress={toggleOpen}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.headerText}>{headerLabel}</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.header}>
+          <Text style={styles.headerText}>{headerLabel}</Text>
+        </View>
+      )}
+
+      <ContentWrapper style={contentStyle}>
         {basePoints != null && (
           <Text style={styles.pointsLine}>{basePoints} Points + Weapons</Text>
         )}
@@ -73,52 +94,54 @@ export default function StatsPanel({ unit, specialRules = [], basePoints, style 
           </View>
         ))}
 
-        {parsedRules.length > 0 && <View style={styles.divider} />}
+        {parsedRules.length > 0 && showStatsRow && <View style={styles.divider} />}
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>C</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.command}+</Text>
+        {showStatsRow && unit && (
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>C</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.command}+</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>BS</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.ballisticSkill}+</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>S</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.speed}</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>WS</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.weaponSkill}+</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>M</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBox}>
+              <Text style={styles.statLabel}>SC</Text>
+              <View style={styles.statValueBox}>
+                <Text style={styles.statValue}>{unit.stats.servitorClades}</Text>
+              </View>
             </View>
           </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>BS</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.ballisticSkill}+</Text>
-            </View>
-          </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>S</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.speed}</Text>
-            </View>
-          </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>WS</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.weaponSkill}+</Text>
-            </View>
-          </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>M</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.manoeuvre}</Text>
-            </View>
-          </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>SC</Text>
-            <View style={styles.statValueBox}>
-              <Text style={styles.statValue}>{unit.stats.servitorClades}</Text>
-            </View>
-          </View>
-        </View>
-      </Animated.View>
+        )}
+      </ContentWrapper>
     </View>
   );
 }
@@ -150,6 +173,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
     overflow: 'hidden',
+  },
+  expandedContentStatic: {
+    marginTop: 16,
+    paddingVertical: 8,
   },
   pointsLine: {
     color: '#8be39d',

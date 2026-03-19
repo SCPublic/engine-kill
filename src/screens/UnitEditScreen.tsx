@@ -13,15 +13,11 @@ import WeaponMount from '../components/WeaponMount';
 import WeaponBottomSheet from '../components/WeaponBottomSheet';
 import WeaponSelectionModal from '../components/WeaponSelectionModal';
 import ScreenWrapper from '../components/ScreenWrapper';
-import { bannerTemplates } from '../data/bannerTemplates';
+import { useBannerTemplates } from '../hooks/useBannerTemplates';
 import { WeaponTemplate } from '../models/UnitTemplate';
 import { unitService } from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
-import {
-  loadQuestorisWeaponsFromBattleScribe,
-  loadWarhoundWeaponsFromBattleScribe,
-} from '../adapters/battlescribe/battlescribeAdapter';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 import { useLegionTemplates } from '../hooks/useLegionTemplates';
 import { TEMPLATE_ID_ALIASES } from '../utils/constants';
@@ -39,16 +35,16 @@ export default function UnitEditScreen({
   const { state, updateUnit, updateVoidShieldByIndex, updateDamage, updateCriticalDamage, updateWeapon, updatePlasmaReactor } =
     useGame();
   const { titanTemplates } = useTitanTemplates();
+  const { bannerTemplates } = useBannerTemplates();
   const { legionTemplates } = useLegionTemplates();
   const { upgradeTemplates, isLoading: isUpgradesLoading, reload: reloadUpgrades } = useUpgradeTemplates();
 
   const [weaponModalVisible, setWeaponModalVisible] = useState(false);
   const [isBannerCompositionOpen, setIsBannerCompositionOpen] = useState(false);
+  const [isBannerUpgradePickerOpen, setIsBannerUpgradePickerOpen] = useState(false);
+  const [bannerWeaponSlotPicking, setBannerWeaponSlotPicking] = useState<number | null>(null);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [weaponSheetMount, setWeaponSheetMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
-  const [remoteWeapons, setRemoteWeapons] = useState<WeaponTemplate[] | null>(null);
-  const [remoteQuestorisWeapons, setRemoteQuestorisWeapons] = useState<WeaponTemplate[] | null>(null);
-  const [remoteQuestorisSpecialRules, setRemoteQuestorisSpecialRules] = useState<string[] | null>(null);
   const [nameDraft, setNameDraft] = useState('');
 
   const unit = state.units.find((u) => u.id === unitId);
@@ -90,11 +86,7 @@ export default function UnitEditScreen({
       const rules = (u.rules?.length ? u.rules : upgradeTplList.find((t) => t.id === u.id)?.rules) ?? [];
       return rules.map((r) => (u.name ? `${u.name}: ${r}` : r));
     });
-    const knightRules =
-      unit?.unitType === 'banner' && unit?.templateId === 'questoris' && remoteQuestorisSpecialRules?.length
-        ? remoteQuestorisSpecialRules
-        : [];
-    const combined = [...chassis, ...knightRules, ...traitRules, ...wargearRules].filter((s) => s.trim().length > 0);
+    const combined = [...chassis, ...traitRules, ...wargearRules].filter((s) => s.trim().length > 0);
     return combined;
   }, [
     template?.specialRules,
@@ -103,7 +95,6 @@ export default function UnitEditScreen({
     unit?.princepsTrait?.rules,
     unit?.upgrades,
     upgradeTemplates,
-    remoteQuestorisSpecialRules,
   ]);
 
   const unitManiple = useMemo(() => {
@@ -125,83 +116,11 @@ export default function UnitEditScreen({
     return found;
   }, [state.battlegroups, unit?.battlegroupId]);
 
-  // Small-slice BSData integration: Warhound weapon cards.
-  useEffect(() => {
-    let cancelled = false;
-    if (!unit || unit.unitType !== 'titan' || unit.templateId !== 'warhound') return;
-    if ((template?.availableWeapons?.length ?? 0) > 6) return;
-    (async () => {
-      try {
-        const { weapons, warnings } = await loadWarhoundWeaponsFromBattleScribe();
-        warnings.forEach((w) => console.warn(`[BattleScribe] ${w}`));
-        if (!cancelled && weapons.length > 0) setRemoteWeapons(weapons);
-      } catch (e) {
-        console.warn('[BattleScribe] Failed to load Warhound weapons; falling back to local weapons.', e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [unit?.templateId, unit?.unitType, template?.availableWeapons?.length]);
-
-  // BattleScribe: Questoris knight weapons (banner terminal shows all weapons from template/BS).
-  useEffect(() => {
-    let cancelled = false;
-    if (!unit || unit.unitType !== 'banner' || unit.templateId !== 'questoris') return;
-    (async () => {
-      try {
-        const { weapons, warnings, specialRules } = await loadQuestorisWeaponsFromBattleScribe();
-        warnings.forEach((w) => console.warn(`[BattleScribe] ${w}`));
-        if (!cancelled) {
-          if (weapons.length > 0) setRemoteQuestorisWeapons(weapons);
-          setRemoteQuestorisSpecialRules(specialRules?.length ? specialRules : null);
-        }
-      } catch (e) {
-        console.warn('[BattleScribe] Failed to load Questoris weapons; using local template.', e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [unit?.templateId, unit?.unitType]);
-
+  // Weapons come only from the unit's template (templates.json).
   const effectiveWeaponsUnfiltered: WeaponTemplate[] = useMemo(() => {
     if (!unit || !template?.availableWeapons) return [];
-    if (unit.unitType === 'titan' && unit.templateId === 'warhound' && remoteWeapons?.length) {
-      // Merge: keep local list stable, overlay any BSData-derived fields by matching weapon id.
-      const base = template.availableWeapons;
-      const remoteById = new Map(remoteWeapons.map((w) => [w.id, w] as const));
-      const merged = base.map((w) => {
-        const r = remoteById.get(w.id);
-        return r ? { ...w, ...r } : w;
-      });
-
-      // Append any remote-only weapons (just in case BSData has extras we don’t).
-      const baseIds = new Set(base.map((w) => w.id));
-      remoteWeapons.forEach((w) => {
-        if (!baseIds.has(w.id)) merged.push(w);
-      });
-      return merged;
-    }
-    // Banners: always use the template's full weapon list (e.g. 5 for Questoris). Overlay BS stats by id, then by name (BS uses different ids).
-    if (unit.unitType === 'banner') {
-      const base = template.availableWeapons;
-      if (unit.templateId === 'questoris' && remoteQuestorisWeapons?.length) {
-        const remoteById = new Map(remoteQuestorisWeapons.map((w) => [w.id, w] as const));
-        const normalizeName = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-        return base.map((w) => {
-          const byId = remoteById.get(w.id);
-          const byName = !byId && remoteQuestorisWeapons.find(
-            (r) => normalizeName(r.name) === normalizeName(w.name)
-          );
-          const r = byId ?? byName;
-          return r ? { ...w, ...r } : w;
-        });
-      }
-      return base;
-    }
     return template.availableWeapons;
-  }, [remoteWeapons, remoteQuestorisWeapons, template?.availableWeapons, unit?.templateId, unit?.unitType, unitLegion?.categoryKey]);
+  }, [unit, template?.availableWeapons]);
 
   // For titans, restrict to weapons available to the unit's legion (from its maniple).
   const effectiveWeapons: WeaponTemplate[] = useMemo(() => {
@@ -471,6 +390,11 @@ export default function UnitEditScreen({
           {unit?.unitType === 'titan' && !templateMatchesUnit ? (
             <Text style={styles.chassisMismatchWarning}>
               No template loaded for chassis "{unit.templateId}". Damage tracks and armour may be wrong. Refresh data on the home screen and reopen.
+            </Text>
+          ) : null}
+          {template && template.availableWeapons == null ? (
+            <Text style={styles.chassisMismatchWarning}>
+              Template "{template.id}" is missing weapon data. Fix data in titan-data and refresh.
             </Text>
           ) : null}
         </View>

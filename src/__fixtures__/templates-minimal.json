@@ -1,0 +1,47 @@
+{
+  "titans": [
+    {
+      "id": "reaver",
+      "name": "Reaver Titan",
+      "unitType": "titan",
+      "defaultStats": {
+        "voidShields": { "max": 4 },
+        "voidShieldSaves": ["3+", "4+", "4+", "X"],
+        "maxHeat": 6,
+        "plasmaReactorMax": 5,
+        "damage": {
+          "head": { "max": 5, "armorRolls": { "direct": "11-13", "devastating": "14-15", "critical": "16+" }, "modifiers": [null, null, 1, 2, 3] },
+          "body": { "max": 6, "armorRolls": { "direct": "10-12", "devastating": "13-14", "critical": "15+" }, "modifiers": [null, null, 1, 1, 2, 3] },
+          "legs": { "max": 6, "armorRolls": { "direct": "11-12", "devastating": "13-14", "critical": "15+" }, "modifiers": [null, null, 1, 1, 2, 3] }
+        },
+        "hasCarapaceWeapon": true,
+        "stats": { "command": 4, "ballisticSkill": 3, "speed": "7\"/11\"", "weaponSkill": 4, "manoeuvre": "2/4", "servitorClades": 3 }
+      },
+      "availableWeapons": [
+        { "id": "laser-blaster", "name": "Laser Blaster", "points": 15, "shortRange": 12, "longRange": 24, "accuracyShort": 0, "accuracyLong": "-1", "dice": 2, "strength": 6, "traits": [], "specialRules": [], "mountType": "arm" }
+      ],
+      "specialRules": ["REAVER: Some rule."]
+    }
+  ],
+  "banners": [
+    {
+      "id": "questoris",
+      "name": "Questoris Knight Banner",
+      "unitType": "banner",
+      "defaultStats": {
+        "structurePointsMax": 12,
+        "hasCarapaceWeapon": false,
+        "stats": { "command": 4, "ballisticSkill": 3, "speed": "8\"/12\"", "weaponSkill": 4, "manoeuvre": "3/5", "servitorClades": 2 }
+      },
+      "availableWeapons": [
+        { "id": "thermal-cannon", "name": "Thermal Cannon", "points": 35, "shortRange": 12, "longRange": 24, "accuracyShort": 0, "accuracyLong": "-1", "dice": 2, "strength": 8, "traits": [], "specialRules": [], "mountType": "arm" }
+      ],
+      "specialRules": ["QUESTORIS: Banner rule."]
+    }
+  ],
+  "maniples": [],
+  "legions": [],
+  "upgrades": [],
+  "princepsTraits": [],
+  "warnings": []
+}

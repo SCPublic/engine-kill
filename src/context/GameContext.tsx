@@ -264,10 +264,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
           // Strip legacy armor field (removed from model; old saves may still have it)
           (['head', 'body', 'legs'] as const).forEach(loc => {
-            const d = unit.damage[loc] as Record<string, unknown>;
+            const d = unit.damage[loc] as unknown as Record<string, unknown>;
             if ('armor' in d && d.armor !== undefined) {
               const { armor: _a, ...rest } = d;
-              unit.damage[loc] = rest as typeof unit.damage[typeof loc];
+              unit.damage[loc] = rest as unknown as typeof unit.damage[typeof loc];
               needsUpdate = true;
             }
           });

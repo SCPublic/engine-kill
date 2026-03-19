@@ -30,6 +30,24 @@ export const colors = {
   textMuted: '#aaa',
 } as const;
 
+/** Command-terminal aesthetic: green-on-dark. Use for screens that match the titan edit "terminal" look. */
+export const terminal = {
+  /** Dark green-black panel/card background */
+  panelBg: '#0d120e',
+  /** Primary heading/label (bright green) */
+  textPrimary: '#9dffb2',
+  /** Same as textPrimary, alternate hex (e.g. #9AFCAF) */
+  textPrimaryAlt: '#9AFCAF',
+  /** Secondary text (teal-green) */
+  textSecondary: '#8be39d',
+  /** Inactive/slot fill (dark green) */
+  inactiveFill: '#1e3524',
+  /** Section border / accent line */
+  border: '#00A323',
+  /** Subtle green tint for highlighted rows (e.g. reactor/shield row) */
+  rowTint: 'rgba(0, 152, 33, 0.15)',
+} as const;
+
 export const layout = {
   labelMinWidth: 150,
   // Shared pip sizing for REACTOR / color row / SHIELDS alignment

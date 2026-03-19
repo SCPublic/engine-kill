@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MissingChassisMaxData } from '../adapters/battlescribe/battlescribeAdapter';
+import type { MissingChassisMaxData } from '../types/templateLoading';
 import { UnitTemplate } from '../models/UnitTemplate';
 import { battleScribeCache } from '../services/battleScribeCache';
 
@@ -65,10 +65,11 @@ export function useTitanTemplates() {
         }
       } catch (e) {
         if (cancelled) return;
-        console.warn('[BattleScribe] Failed to load titan templates from data source.', e);
+        const message = e instanceof Error ? e.message : String(e);
+        console.warn('[Templates] Failed to load titan templates.', e);
         setRemoteTitanTemplates(null);
         setMissingMaxData([]);
-        setWarnings(['Failed to load titan templates from data source.']);
+        setWarnings([message || 'Failed to load titan templates from data source.']);
         setLegendTitans([]);
       } finally {
         if (!cancelled) setIsLoading(false);

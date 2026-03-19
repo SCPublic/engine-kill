@@ -19,22 +19,34 @@ import {
   Dialog,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radius, spacing } from '../theme/tokens';
+import { colors, radius, spacing, terminal } from '../theme/tokens';
 import { sortTemplatesByScale } from '../utils/titanScaleOrder';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useNavigation } from '@react-navigation/native';
 import { Unit } from '../models/Unit';
 import { Maniple } from '../models/Maniple';
-import { bannerTemplates } from '../data/bannerTemplates';
 import { UnitTemplate } from '../models/UnitTemplate';
 import { ManipleTemplate } from '../models/ManipleTemplate';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import { useBannerTemplates } from '../hooks/useBannerTemplates';
 import { useManipleTemplates } from '../hooks/useManipleTemplates';
 import { useLegionTemplates } from '../hooks/useLegionTemplates';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { usePrincepsTraitTemplates } from '../hooks/usePrincepsTraitTemplates';
+import ScreenWrapper from '../components/ScreenWrapper';
+import StatsPanel from '../components/StatsPanel';
 
 const WEB_MAX_WIDTH = 1100;
+
+/** Theme override so SegmentedButtons match the command terminal (green on dark panel). */
+const terminalSegmentedTheme = {
+  colors: {
+    secondaryContainer: terminal.panelBg,
+    outline: terminal.border,
+    onSecondaryContainer: terminal.textPrimary,
+    onSurface: terminal.textSecondary,
+  },
+} as const;
 
 /** Warlord-Sinister Psi Titan: loyalist only, reinforcement only (cannot be added to a maniple). */
 const SINISTER_PSI_TEMPLATE_ID = 'bs:dfeb-83af-7b26-622a';
@@ -60,6 +72,7 @@ export default function HomeScreen({
     updateBattlegroupReinforcementOrder,
   } = useGame();
   const { titanTemplatesPlayable, isLoading: isTitansLoading, reload: reloadTitans, warnings: titanWarnings } = useTitanTemplates();
+  const { bannerTemplates } = useBannerTemplates();
   const { manipleTemplates, isLoading: isManiplesLoading, reload: reloadManiples } = useManipleTemplates();
   const { legionTemplates, isLoading: isLegionsLoading, reload: reloadLegions } = useLegionTemplates();
   const { upgradeTemplates, isLoading: isUpgradesLoading, reload: reloadUpgrades } = useUpgradeTemplates();
@@ -92,7 +105,7 @@ export default function HomeScreen({
 
   const templates: UnitTemplate[] = useMemo(
     () => (unitType === 'titan' ? titanTemplatesPlayable : bannerTemplates),
-    [unitType, titanTemplatesPlayable]
+    [unitType, titanTemplatesPlayable, bannerTemplates]
   );
 
   const handleUnitPress = (unit: Unit) => {
@@ -360,9 +373,11 @@ export default function HomeScreen({
 
   if (!!state.isLoading) {
     return (
-      <View style={styles.container}>
-        <Text variant="bodyLarge" style={styles.textPrimary}>Loading...</Text>
-      </View>
+      <ScreenWrapper>
+        <View style={styles.containerTransparent}>
+          <Text variant="bodyLarge" style={styles.textPrimary}>Loading...</Text>
+        </View>
+      </ScreenWrapper>
     );
   }
 
@@ -375,7 +390,8 @@ export default function HomeScreen({
   const DraggableListComponent = isWeb ? DraggableFlatList : NestableDraggableFlatList;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenWrapper>
+    <SafeAreaView style={styles.containerTransparent} edges={['top']}>
       <ScrollWrapper
         contentContainerStyle={[styles.scrollContent, { width: '100%', maxWidth: WEB_MAX_WIDTH, alignSelf: 'center' }]}
       >
@@ -383,16 +399,19 @@ export default function HomeScreen({
             <View style={styles.sectionHeaderRow}>
               <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 {onBack ? (
-                  <IconButton icon="chevron-left" iconColor={colors.text} size={18} onPress={onBack} />
+                  <IconButton
+                    icon="chevron-left"
+                    iconColor={colors.text}
+                    size={18}
+                    onPress={onBack}
+                    accessibilityLabel="Back to battlegroups"
+                  />
                 ) : null}
                 <Text variant="titleMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>
                   {activeBattlegroupName ?? 'Battlegroup'}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text variant="bodySmall" style={styles.sectionMeta}>
-                  {battlegroupManiples.length}
-                </Text>
                 <View style={styles.reloadSlot}>
                   <IconButton
                     icon="refresh"
@@ -487,56 +506,46 @@ export default function HomeScreen({
                             />
                           </View>
                         </View>
-                        {!!tpl?.specialRule && (
-                          <View style={{ marginTop: spacing.sm }}>
-                            <Text variant="bodySmall" style={styles.ruleSectionTitle}>
-                              {tpl.name}
-                            </Text>
-                            <Text variant="bodySmall" style={styles.manipleRule}>
-                              {tpl.specialRule}
-                            </Text>
-                          </View>
-                        )}
-                        {!!legion && (
-                          <View style={{ marginTop: 8 }}>
-                            <Text variant="bodySmall" style={styles.legionName}>
-                              {legion.name}
-                            </Text>
-                            {legion.rules.map((r, idx) => (
-                              <Text key={`${legion.id}:${idx}`} variant="bodySmall" style={styles.legionRule}>
-                                {r}
-                              </Text>
-                            ))}
-                          </View>
-                        )}
+                        {(() => {
+                          const manipleRules: string[] = [];
+                          if (tpl?.specialRule) manipleRules.push(`${tpl.name}: ${tpl.specialRule}`);
+                          if (legion?.rules?.length) {
+                            legion.rules.forEach((r) => manipleRules.push(`${legion.name}: ${r}`));
+                          }
+                          return manipleRules.length > 0 ? (
+                            <View style={{ marginTop: spacing.sm }}>
+                              <StatsPanel title="MANIPLE" specialRules={manipleRules} collapsible={false} />
+                            </View>
+                          ) : null;
+                        })()}
                         {titans.length > 0 ? (
                           <View style={{ marginTop: 8 }}>
                             {isWeb ? (
                               titans.map((unit, index) => (
                                 <Card
                                   key={unit.id}
-                                  style={[styles.unitCard, { marginBottom: 8 }]}
+                                  style={[styles.titanCard, { marginBottom: 8 }]}
                                   onPress={() => handleUnitPress(unit)}
                                 >
                                   <Card.Content>
                                     <View style={styles.unitNameRow}>
-                                      <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
+                                      <Text variant="titleMedium" style={styles.titanCardTitle} numberOfLines={1}>
                                         {unit.name}
                                       </Text>
                                     </View>
-                                    <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                                    <Text variant="bodySmall" style={styles.titanCardWeapons} numberOfLines={2}>
                                       {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
                                         .filter((n): n is string => !!n)
                                         .join(' • ') || '—'}
                                     </Text>
                                     <View style={styles.unitTitleRow}>
-                                      <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                                      <Text variant="bodySmall" style={styles.titanCardPoints} numberOfLines={1}>
                                         {getTitanTotalPoints(unit)} pts
                                       </Text>
                                       <IconButton
                                         icon="chevron-up"
                                         size={18}
-                                        iconColor={colors.text}
+                                        iconColor={terminal.textPrimary}
                                         disabled={index <= 0}
                                         onPress={() => {
                                           if (index <= 0) return;
@@ -549,7 +558,7 @@ export default function HomeScreen({
                                       <IconButton
                                         icon="chevron-down"
                                         size={18}
-                                        iconColor={colors.text}
+                                        iconColor={terminal.textPrimary}
                                         disabled={index >= titans.length - 1}
                                         onPress={() => {
                                           if (index >= titans.length - 1) return;
@@ -562,21 +571,21 @@ export default function HomeScreen({
                                       <IconButton
                                         icon="cog-outline"
                                         size={18}
-                                        iconColor={colors.text}
+                                        iconColor={terminal.textPrimary}
                                         onPress={() => setEditTitanId(unit.id)}
                                         accessibilityLabel={`Edit ${unit.name}`}
                                       />
                                       <IconButton
                                         icon="content-copy"
                                         size={18}
-                                        iconColor={colors.text}
+                                        iconColor={terminal.textPrimary}
                                         onPress={() => handleCopyTitan(unit.id)}
                                         accessibilityLabel={`Copy ${unit.name}`}
                                       />
                                       <IconButton
                                         icon="trash-can-outline"
                                         size={18}
-                                        iconColor={colors.text}
+                                        iconColor={terminal.textPrimary}
                                         onPress={() => handleDeleteUnit(unit)}
                                         accessibilityLabel={`Delete ${unit.name}`}
                                       />
@@ -592,50 +601,50 @@ export default function HomeScreen({
                                 onDragEnd={({ data: next }) => updateManipleTitanOrder(m.id, next.map((u) => u.id))}
                                 renderItem={({ item: unit, drag, isActive }) => (
                                   <Card
-                                    style={[styles.unitCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
+                                    style={[styles.titanCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
                                     onPress={() => handleUnitPress(unit)}
                                     onLongPress={drag}
                                   >
                                     <Card.Content>
                                       <View style={styles.unitNameRow}>
-                                        <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
+                                        <Text variant="titleMedium" style={styles.titanCardTitle} numberOfLines={1}>
                                           {unit.name}
                                         </Text>
                                       </View>
-                                      <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                                      <Text variant="bodySmall" style={styles.titanCardWeapons} numberOfLines={2}>
                                         {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
                                           .filter((n): n is string => !!n)
                                           .join(' • ') || '—'}
                                       </Text>
                                       <View style={styles.unitTitleRow}>
-                                        <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                                        <Text variant="bodySmall" style={styles.titanCardPoints} numberOfLines={1}>
                                           {getTitanTotalPoints(unit)} pts
                                         </Text>
                                         <IconButton
                                           icon="drag-horizontal"
                                           size={18}
-                                          iconColor={colors.text}
+                                          iconColor={terminal.textPrimary}
                                           onPress={drag}
                                           accessibilityLabel={`Reorder ${unit.name}`}
                                         />
                                         <IconButton
                                           icon="cog-outline"
                                           size={18}
-                                          iconColor={colors.text}
+                                          iconColor={terminal.textPrimary}
                                           onPress={() => setEditTitanId(unit.id)}
                                           accessibilityLabel={`Edit ${unit.name}`}
                                         />
                                         <IconButton
                                           icon="content-copy"
                                           size={18}
-                                          iconColor={colors.text}
+                                          iconColor={terminal.textPrimary}
                                           onPress={() => handleCopyTitan(unit.id)}
                                           accessibilityLabel={`Copy ${unit.name}`}
                                         />
                                         <IconButton
                                           icon="trash-can-outline"
                                           size={18}
-                                          iconColor={colors.text}
+                                          iconColor={terminal.textPrimary}
                                           onPress={() => handleDeleteUnit(unit)}
                                           accessibilityLabel={`Delete ${unit.name}`}
                                         />
@@ -674,9 +683,6 @@ export default function HomeScreen({
               <View style={styles.sectionHeaderRow}>
                 <Text variant="titleSmall" style={styles.sectionTitle}>
                   Banners
-                </Text>
-                <Text variant="bodySmall" style={styles.sectionMeta}>
-                  {bannerUnits.length}
                 </Text>
               </View>
             </View>
@@ -727,37 +733,34 @@ export default function HomeScreen({
                 <Text variant="titleSmall" style={styles.sectionTitle}>
                   Reinforcements
                 </Text>
-                <Text variant="bodySmall" style={styles.sectionMeta}>
-                  {orderedReinforcementUnits.length}
-                </Text>
               </View>
             </View>
             {isWeb ? (
               orderedReinforcementUnits.map((unit, index) => (
                 <Card
                   key={unit.id}
-                  style={[styles.unitCard, { marginBottom: 8 }]}
+                  style={[styles.titanCard, { marginBottom: 8 }]}
                   onPress={() => handleUnitPress(unit)}
                 >
                   <Card.Content>
                     <View style={styles.unitNameRow}>
-                      <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
+                      <Text variant="titleMedium" style={styles.titanCardTitle} numberOfLines={1}>
                         {unit.name}
                       </Text>
                     </View>
-                    <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                    <Text variant="bodySmall" style={styles.titanCardWeapons} numberOfLines={2}>
                       {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
                         .filter((n): n is string => !!n)
                         .join(' • ') || '—'}
                     </Text>
                     <View style={styles.unitTitleRow}>
-                      <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                      <Text variant="bodySmall" style={styles.titanCardPoints} numberOfLines={1}>
                         {getTitanTotalPoints(unit)} pts
                       </Text>
                       <IconButton
                         icon="chevron-up"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         disabled={index <= 0}
                         onPress={() => {
                           if (index <= 0 || !state.activeBattlegroupId) return;
@@ -770,7 +773,7 @@ export default function HomeScreen({
                       <IconButton
                         icon="chevron-down"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         disabled={index >= orderedReinforcementUnits.length - 1}
                         onPress={() => {
                           if (index >= orderedReinforcementUnits.length - 1 || !state.activeBattlegroupId) return;
@@ -783,21 +786,21 @@ export default function HomeScreen({
                       <IconButton
                         icon="cog-outline"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         onPress={() => setEditTitanId(unit.id)}
                         accessibilityLabel={`Edit ${unit.name}`}
                       />
                       <IconButton
                         icon="content-copy"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         onPress={() => handleCopyTitan(unit.id)}
                         accessibilityLabel={`Copy ${unit.name}`}
                       />
                       <IconButton
                         icon="trash-can-outline"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         onPress={() => handleDeleteUnit(unit)}
                         accessibilityLabel={`Delete ${unit.name}`}
                       />
@@ -817,50 +820,50 @@ export default function HomeScreen({
                 }}
                 renderItem={({ item: unit, drag, isActive }) => (
                   <Card
-                    style={[styles.unitCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
+                    style={[styles.titanCard, { marginBottom: 8 }, isActive && { opacity: 0.9 }]}
                     onPress={() => handleUnitPress(unit)}
                     onLongPress={drag}
                   >
                     <Card.Content>
                       <View style={styles.unitNameRow}>
-                        <Text variant="titleMedium" style={styles.unitTitleFullWidth} numberOfLines={1}>
+                        <Text variant="titleMedium" style={styles.titanCardTitle} numberOfLines={1}>
                           {unit.name}
                         </Text>
                       </View>
-                      <Text variant="bodySmall" style={styles.unitWeapons} numberOfLines={2}>
+                      <Text variant="bodySmall" style={styles.titanCardWeapons} numberOfLines={2}>
                         {[unit.leftWeapon?.name, unit.rightWeapon?.name, unit.carapaceWeapon?.name]
                           .filter((n): n is string => !!n)
                           .join(' • ') || '—'}
                       </Text>
                       <View style={styles.unitTitleRow}>
-                        <Text variant="bodySmall" style={styles.unitPoints} numberOfLines={1}>
+                        <Text variant="bodySmall" style={styles.titanCardPoints} numberOfLines={1}>
                           {getTitanTotalPoints(unit)} pts
                         </Text>
                         <IconButton
                           icon="drag-horizontal"
                           size={18}
-                          iconColor={colors.text}
+                          iconColor={terminal.textPrimary}
                           onPress={drag}
                           accessibilityLabel={`Reorder ${unit.name}`}
                         />
                         <IconButton
                           icon="cog-outline"
                           size={18}
-                          iconColor={colors.text}
+                          iconColor={terminal.textPrimary}
                           onPress={() => setEditTitanId(unit.id)}
                           accessibilityLabel={`Edit ${unit.name}`}
                         />
                         <IconButton
                           icon="content-copy"
                           size={18}
-                          iconColor={colors.text}
+                          iconColor={terminal.textPrimary}
                           onPress={() => handleCopyTitan(unit.id)}
                           accessibilityLabel={`Copy ${unit.name}`}
                         />
                         <IconButton
                           icon="trash-can-outline"
                           size={18}
-                          iconColor={colors.text}
+                          iconColor={terminal.textPrimary}
                           onPress={() => handleDeleteUnit(unit)}
                           accessibilityLabel={`Delete ${unit.name}`}
                         />
@@ -877,8 +880,7 @@ export default function HomeScreen({
         <View style={styles.fabRowWeb}>
           <FAB
             icon="plus"
-            style={styles.fabWeb}
-            fabStyle={{ backgroundColor: colors.panelAlt }}
+            style={[styles.fabWeb, { backgroundColor: colors.panelAlt }]}
             color={colors.text}
             onPress={() => {
               setAddUnitTargetManipleId(null);
@@ -888,8 +890,7 @@ export default function HomeScreen({
           />
           <FAB
             icon="account-group"
-            style={styles.fabWeb}
-            fabStyle={{ backgroundColor: colors.panelAlt }}
+            style={[styles.fabWeb, { backgroundColor: colors.panelAlt }]}
             color={colors.text}
             onPress={() => setIsAddManipleOpen(true)}
             accessibilityLabel="Add Maniple"
@@ -1142,58 +1143,61 @@ export default function HomeScreen({
         <Modal
           visible={!!manageManipleId}
           onDismiss={() => setManageManipleId(null)}
-          contentContainerStyle={[styles.addModal, { paddingTop: 0 }]}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <TextInput
-              label="Name"
-              mode="outlined"
-              value={manipleNameDraft}
-              onChangeText={setManipleNameDraft}
-              onBlur={() => {
-                if (!manageManiple) return;
-                const trimmed = manipleNameDraft.trim();
-                if (trimmed && trimmed !== manageManiple.name) {
-                  void updateManiple({ ...manageManiple, name: trimmed });
-                }
-              }}
-              onSubmitEditing={() => {
-                if (!manageManiple) return;
-                const trimmed = manipleNameDraft.trim();
-                if (trimmed && trimmed !== manageManiple.name) {
-                  void updateManiple({ ...manageManiple, name: trimmed });
-                }
-              }}
-              placeholder="Maniple name"
-              returnKeyType="done"
-              autoCapitalize="words"
-              autoCorrect={false}
-              dense
-              style={[styles.nameInput, { flex: 1, marginTop: 0 }]}
-              outlineColor={colors.border}
-              activeOutlineColor={colors.text}
-              textColor={colors.text}
-            />
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setManageManipleId(null)} />
-          </View>
-
-          <View style={styles.legionPickerRow}>
-            <Text variant="bodySmall" style={styles.templateMeta}>
-              Maniple type:
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
+              Edit maniple
             </Text>
-            <Button
-              mode="outlined"
-              onPress={() => setIsManipleTypePickerOpen(true)}
-              disabled={!manageManiple}
-            >
-              {manageTemplate?.name ?? 'Select type'}
-            </Button>
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setManageManipleId(null)} />
           </View>
+          <TextInput
+            label="Maniple name"
+            mode="outlined"
+            value={manipleNameDraft}
+            onChangeText={setManipleNameDraft}
+            onBlur={() => {
+              if (!manageManiple) return;
+              const trimmed = manipleNameDraft.trim();
+              if (trimmed && trimmed !== manageManiple.name) {
+                void updateManiple({ ...manageManiple, name: trimmed });
+              }
+            }}
+            onSubmitEditing={() => {
+              if (!manageManiple) return;
+              const trimmed = manipleNameDraft.trim();
+              if (trimmed && trimmed !== manageManiple.name) {
+                void updateManiple({ ...manageManiple, name: trimmed });
+              }
+            }}
+            placeholder="Maniple name"
+            returnKeyType="done"
+            autoCapitalize="words"
+            autoCorrect={false}
+            style={styles.editNameInput}
+            outlineColor={terminal.border}
+            activeOutlineColor={terminal.textPrimary}
+            textColor={terminal.textPrimary}
+          />
 
-          <View style={styles.legionPickerRow}>
-            <Text variant="bodySmall" style={styles.templateMeta}>
-              Legion:
-            </Text>
+          <Text variant="labelMedium" style={[styles.editModalLabel, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+            Maniple type
+          </Text>
+          <Button
+            mode="outlined"
+            onPress={() => setIsManipleTypePickerOpen(true)}
+            disabled={!manageManiple}
+            style={styles.editOutlinedButton}
+            labelStyle={styles.editTextPrimary}
+            textColor={terminal.textPrimary}
+          >
+            {manageTemplate?.name ?? 'Select type'}
+          </Button>
+
+          <Text variant="labelMedium" style={[styles.editModalLabel, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+            Legion
+          </Text>
+          <View style={[styles.legionPickerRow, { marginBottom: 0 }]}>
             <Button
               mode="outlined"
               onPress={() => {
@@ -1201,13 +1205,16 @@ export default function HomeScreen({
                 setIsLegionPickerOpen(true);
               }}
               disabled={!manageManiple}
+              style={styles.editOutlinedButton}
+              labelStyle={styles.editTextPrimary}
+              textColor={terminal.textPrimary}
             >
               {manageLegion?.name ?? 'None'}
             </Button>
             {manageLegion ? (
               <IconButton
                 icon="close"
-                iconColor={colors.text}
+                iconColor={terminal.textPrimary}
                 size={18}
                 onPress={() => {
                   if (!manageManiple) return;
@@ -1220,10 +1227,10 @@ export default function HomeScreen({
 
           {!!manageTemplate?.specialRule && (
             <View style={{ marginTop: spacing.sm }}>
-              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+              <Text variant="bodySmall" style={styles.editSectionTitle}>
                 {manageTemplate.name}
               </Text>
-              <Text variant="bodySmall" style={styles.manipleRule}>
+              <Text variant="bodySmall" style={styles.editManipleRule}>
                 {manageTemplate.specialRule}
               </Text>
             </View>
@@ -1232,7 +1239,7 @@ export default function HomeScreen({
           {!!manageLegion && manageLegion.rules.length > 0 ? (
             <View style={{ marginTop: 8 }}>
               {manageLegion.rules.map((r, idx) => (
-                <Text key={`${manageLegion.id}:${idx}`} variant="bodySmall" style={styles.legionRule}>
+                <Text key={`${manageLegion.id}:${idx}`} variant="bodySmall" style={styles.editLegionRule}>
                   {r}
                 </Text>
               ))}
@@ -1243,21 +1250,21 @@ export default function HomeScreen({
         <Modal
           visible={isManipleTypePickerOpen}
           onDismiss={() => setIsManipleTypePickerOpen(false)}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
               Select Maniple Type
             </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsManipleTypePickerOpen(false)} />
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setIsManipleTypePickerOpen(false)} />
           </View>
           <View style={styles.templateListContainer}>
             {isManiplesLoading ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 Loading maniples from BattleScribe…
               </Text>
             ) : maniplesForBattlegroup.length === 0 ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 {manipleTemplates.length === 0
                   ? 'No maniples found in BattleScribe data.'
                   : "No maniples match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
@@ -1271,7 +1278,7 @@ export default function HomeScreen({
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item: template }) => (
                   <Card
-                    style={styles.templateCard}
+                    style={styles.editTemplateCard}
                     onPress={() => {
                       if (!manageManiple) return;
                       void updateManiple({ ...manageManiple, templateId: template.id });
@@ -1279,11 +1286,11 @@ export default function HomeScreen({
                     }}
                   >
                     <Card.Content>
-                      <Text variant="titleLarge" style={styles.textPrimary}>{template.name}</Text>
-                      <Text variant="bodySmall" style={styles.templateMeta}>
+                      <Text variant="titleLarge" style={styles.editTextPrimary}>{template.name}</Text>
+                      <Text variant="bodySmall" style={styles.editTextMuted}>
                         Titans: {template.minTitans}–{template.maxTitans > 0 ? template.maxTitans : '—'}
                       </Text>
-                      <Text variant="bodySmall" style={styles.manipleRule}>
+                      <Text variant="bodySmall" style={styles.editManipleRule}>
                         {template.specialRule}
                       </Text>
                     </Card.Content>
@@ -1297,22 +1304,22 @@ export default function HomeScreen({
         <Modal
           visible={isLegionPickerOpen}
           onDismiss={() => setIsLegionPickerOpen(false)}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
               Select Legion
             </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsLegionPickerOpen(false)} />
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setIsLegionPickerOpen(false)} />
           </View>
 
           <View style={styles.templateListContainer}>
             {isLegionsLoading ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 Loading legions from BattleScribe…
               </Text>
             ) : legionsForBattlegroup.length === 0 ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 {legionTemplates.length === 0
                   ? 'No legions found in BattleScribe data.'
                   : "No legions match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
@@ -1326,7 +1333,7 @@ export default function HomeScreen({
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item: legion }) => (
                   <Card
-                    style={styles.templateCard}
+                    style={styles.editTemplateCard}
                     onPress={() => {
                       if (legionPickerTarget === 'manage') {
                         if (!manageManiple) return;
@@ -1338,11 +1345,11 @@ export default function HomeScreen({
                     }}
                   >
                     <Card.Content>
-                      <Text variant="titleLarge" style={styles.textPrimary}>
+                      <Text variant="titleLarge" style={styles.editTextPrimary}>
                         {legion.name}
                       </Text>
                       {legion.rules.slice(0, 1).map((r, idx) => (
-                        <Text key={`${legion.id}:preview:${idx}`} variant="bodySmall" style={styles.legionRule}>
+                        <Text key={`${legion.id}:preview:${idx}`} variant="bodySmall" style={styles.editLegionRule}>
                           {r}
                         </Text>
                       ))}
@@ -1360,29 +1367,30 @@ export default function HomeScreen({
             setEditTitanId(null);
             setIsUpgradePickerOpen(false);
             setIsTraitPickerOpen(false);
-            setBannerWeaponSlotPicking(null);
           }}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <TextInput
-              label="Name"
-              mode="outlined"
-              value={titanNameDraft}
-              onChangeText={setTitanNameDraft}
-              onBlur={saveTitanName}
-              onSubmitEditing={saveTitanName}
-              returnKeyType="done"
-              autoCapitalize="words"
-              autoCorrect={false}
-              dense
-              style={[styles.nameInput, { flex: 1, marginTop: 0, backgroundColor: colors.panel }]}
-              outlineColor={colors.border}
-              activeOutlineColor={colors.text}
-              textColor={colors.text}
-            />
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setEditTitanId(null)} />
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
+              Edit titan
+            </Text>
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setEditTitanId(null)} />
           </View>
+          <TextInput
+            label="Name"
+            mode="outlined"
+            value={titanNameDraft}
+            onChangeText={setTitanNameDraft}
+            onBlur={saveTitanName}
+            onSubmitEditing={saveTitanName}
+            returnKeyType="done"
+            autoCapitalize="words"
+            autoCorrect={false}
+            style={styles.editNameInput}
+            outlineColor={terminal.border}
+            activeOutlineColor={terminal.textPrimary}
+            textColor={terminal.textPrimary}
+          />
 
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: spacing.sm, paddingBottom: spacing.lg }} keyboardShouldPersistTaps="handled">
             {isBannerUnit && selectedUnit && (() => {
@@ -1390,7 +1398,7 @@ export default function HomeScreen({
               if (!template) {
                 return (
                   <View style={{ marginTop: spacing.lg }}>
-                    <Text variant="bodySmall" style={{ color: '#ff9800' }}>
+                    <Text variant="bodySmall" style={[styles.editSectionEmpty, { color: '#ff9800' }]}>
                       Unknown banner type (templateId: {selectedUnit.templateId ?? 'missing'}). Expected one of: questoris, cerastus.
                     </Text>
                   </View>
@@ -1441,17 +1449,17 @@ export default function HomeScreen({
               const warnWeapons = armWeaponTotal !== requiredTotal;
               return (
                 <View style={{ marginTop: spacing.lg }}>
-                  <Text variant="bodySmall" style={styles.ruleSectionTitle}>Knights</Text>
+                  <Text variant="bodySmall" style={styles.editSectionTitle}>Knights</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                    <IconButton icon="minus" size={20} onPress={() => setKnightCount(K - 1)} disabled={K <= minK} />
-                    <Text variant="titleMedium" style={styles.textPrimary}>{K}</Text>
-                    <IconButton icon="plus" size={20} onPress={() => setKnightCount(K + 1)} disabled={K >= maxK} />
-                    <Text variant="bodySmall" style={styles.textMuted}>({minK}–{maxK})</Text>
+                    <IconButton icon="minus" size={20} iconColor={terminal.textPrimary} onPress={() => setKnightCount(K - 1)} disabled={K <= minK} />
+                    <Text variant="titleMedium" style={styles.editTextPrimary}>{K}</Text>
+                    <IconButton icon="plus" size={20} iconColor={terminal.textPrimary} onPress={() => setKnightCount(K + 1)} disabled={K >= maxK} />
+                    <Text variant="bodySmall" style={styles.editTextMuted}>({minK}–{maxK})</Text>
                   </View>
                   <View style={{ marginTop: spacing.md }}>
-                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Weapons</Text>
+                    <Text variant="bodySmall" style={styles.editSectionTitle}>Weapons</Text>
                     {warnWeapons && (
-                      <Text variant="bodySmall" style={{ color: '#ff9800', marginTop: spacing.xs }}>
+                      <Text variant="bodySmall" style={[styles.editSectionEmpty, { color: '#ff9800', marginTop: spacing.xs }]}>
                         Total is {armWeaponTotal}; need {requiredTotal}.
                       </Text>
                     )}
@@ -1459,32 +1467,32 @@ export default function HomeScreen({
                       const count = weaponIds.filter((id) => id === w.id).length;
                       return (
                         <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                          <Text variant="bodyMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</Text>
-                          <IconButton icon="minus" size={20} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
-                          <Text variant="titleMedium" style={styles.textPrimary}>{count}</Text>
-                          <IconButton icon="plus" size={20} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
+                          <Text variant="bodyMedium" style={[styles.editTextPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</Text>
+                          <IconButton icon="minus" size={20} iconColor={terminal.textPrimary} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
+                          <Text variant="titleMedium" style={styles.editTextPrimary}>{count}</Text>
+                          <IconButton icon="plus" size={20} iconColor={terminal.textPrimary} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
                         </View>
                       );
                     })}
                   </View>
                   <View style={{ marginTop: spacing.md }}>
-                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Meltaguns</Text>
+                    <Text variant="bodySmall" style={styles.editSectionTitle}>Meltaguns</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                      <IconButton icon="minus" size={20} onPress={() => setMeltagunCount(meltagun - 1)} disabled={meltagun <= 0} />
-                      <Text variant="titleMedium">{meltagun}</Text>
-                      <IconButton icon="plus" size={20} onPress={() => setMeltagunCount(meltagun + 1)} disabled={meltagun >= K} />
+                      <IconButton icon="minus" size={20} iconColor={terminal.textPrimary} onPress={() => setMeltagunCount(meltagun - 1)} disabled={meltagun <= 0} />
+                      <Text variant="titleMedium" style={styles.editTextPrimary}>{meltagun}</Text>
+                      <IconButton icon="plus" size={20} iconColor={terminal.textPrimary} onPress={() => setMeltagunCount(meltagun + 1)} disabled={meltagun >= K} />
                     </View>
                   </View>
                   <View style={{ marginTop: spacing.md }}>
-                    <Text variant="bodySmall" style={styles.ruleSectionTitle}>Stormspear rocket pod</Text>
+                    <Text variant="bodySmall" style={styles.editSectionTitle}>Stormspear rocket pod</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                      <IconButton icon="minus" size={20} onPress={() => setStormspearCount(stormspear - 1)} disabled={stormspear <= 0} />
-                      <Text variant="titleMedium">{stormspear}</Text>
-                      <IconButton icon="plus" size={20} onPress={() => setStormspearCount(stormspear + 1)} disabled={stormspear >= K} />
+                      <IconButton icon="minus" size={20} iconColor={terminal.textPrimary} onPress={() => setStormspearCount(stormspear - 1)} disabled={stormspear <= 0} />
+                      <Text variant="titleMedium" style={styles.editTextPrimary}>{stormspear}</Text>
+                      <IconButton icon="plus" size={20} iconColor={terminal.textPrimary} onPress={() => setStormspearCount(stormspear + 1)} disabled={stormspear >= K} />
                     </View>
                   </View>
                   <View style={{ marginTop: spacing.lg }}>
-                    <Text variant="titleMedium" style={styles.textPrimary}>Total: {totalPts} pts</Text>
+                    <Text variant="titleMedium" style={styles.editTextPrimary}>Total: {totalPts} pts</Text>
                   </View>
                 </View>
               );
@@ -1492,102 +1500,115 @@ export default function HomeScreen({
 
             {selectedUnit?.unitType === 'titan' && selectedTitanManiple ? (
               <View style={{ marginTop: spacing.sm }}>
-                <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                <Text variant="bodySmall" style={styles.editSectionTitle}>
                   Princeps Seniores
                 </Text>
                 <Button
                   mode={selectedTitan?.isPrincepsSeniores ? 'contained' : 'outlined'}
                   onPress={() => togglePrincepsSeniores(!selectedTitan?.isPrincepsSeniores)}
+                  style={selectedTitan?.isPrincepsSeniores ? undefined : styles.editOutlinedButton}
+                  labelStyle={styles.editTextPrimary}
+                  textColor={terminal.textPrimary}
                 >
                   {selectedTitan?.isPrincepsSeniores ? 'Enabled' : 'Enable'}
                 </Button>
                 {PRINCEPS_SENIORES_RULES.map((r, idx) => (
-                  <Text key={`ps:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                  <Text key={`ps:${idx}`} variant="bodySmall" style={styles.editManipleRule}>
                     {r}
                   </Text>
                 ))}
 
               {selectedTitan?.isPrincepsSeniores && selectedTitanLegion ? (
                 <View style={{ marginTop: spacing.sm }}>
-                  <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                  <Text variant="bodySmall" style={styles.editSectionTitle}>
                     Personal Trait
                   </Text>
                   <Button
                     mode="outlined"
                     onPress={() => setIsTraitPickerOpen(true)}
                     disabled={princepsTraitTemplates.length === 0}
+                    style={styles.editOutlinedButton}
+                    labelStyle={styles.editTextPrimary}
+                    textColor={terminal.textPrimary}
                   >
                     {selectedTitan?.princepsTrait ? 'Change trait' : 'Select trait'}
                   </Button>
                   {selectedTitan?.princepsTrait ? (
-                    <Card style={[styles.templateCard, { marginTop: spacing.sm }]}>
+                    <Card style={[styles.editTemplateCard, { marginTop: spacing.sm }]}>
                       <Card.Content>
-                        <Text variant="titleMedium" style={styles.textPrimary}>
+                        <Text variant="titleMedium" style={styles.editTextPrimary}>
                           {selectedTitan.princepsTrait.name}
                         </Text>
                         {selectedTitan.princepsTrait.rules.map((r, idx) => (
-                          <Text key={`pt:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                          <Text key={`pt:${idx}`} variant="bodySmall" style={styles.editManipleRule}>
                             {r}
                           </Text>
                         ))}
                       </Card.Content>
                     </Card>
                   ) : (
-                    <Text variant="bodySmall" style={styles.sectionEmpty}>
+                    <Text variant="bodySmall" style={styles.editSectionEmpty}>
                       No personal trait selected.
                     </Text>
                   )}
                 </View>
               ) : selectedTitan?.isPrincepsSeniores && !selectedTitanLegion ? (
-                <Text variant="bodySmall" style={[styles.sectionEmpty, { marginTop: spacing.sm }]}>
+                <Text variant="bodySmall" style={[styles.editSectionEmpty, { marginTop: spacing.sm }]}>
                   Select a legion on the maniple to choose a personal trait.
                 </Text>
               ) : null}
 
-              <Text variant="bodySmall" style={[styles.templateMeta, { marginTop: spacing.sm }]}>
+              <Text variant="bodySmall" style={[styles.editTextMuted, { marginTop: spacing.sm }]}>
                 Maniple: {selectedTitanManiple.name}
               </Text>
             </View>
           ) : selectedUnit?.unitType === 'titan' ? (
-            <Text variant="bodySmall" style={styles.sectionEmpty}>
+            <Text variant="bodySmall" style={styles.editSectionEmpty}>
               This titan is not in a maniple (Princeps Seniores is maniple-only).
             </Text>
           ) : null}
 
           {selectedUnit?.unitType === 'titan' && (
             <View style={{ marginTop: spacing.lg }}>
-              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+              <Text variant="bodySmall" style={styles.editSectionTitle}>
                 Wargear & Upgrades
               </Text>
-              <Button mode="outlined" onPress={() => setIsUpgradePickerOpen(true)} disabled={!selectedUnit}>
+              <Button
+                mode="outlined"
+                onPress={() => setIsUpgradePickerOpen(true)}
+                disabled={!selectedUnit}
+                style={styles.editOutlinedButton}
+                labelStyle={styles.editTextPrimary}
+                textColor={terminal.textPrimary}
+              >
                 Add upgrade
               </Button>
               {(selectedUnit?.upgrades ?? []).length === 0 ? (
-                <Text variant="bodySmall" style={styles.sectionEmpty}>
+                <Text variant="bodySmall" style={styles.editSectionEmpty}>
                   No upgrades selected.
                 </Text>
               ) : (
                 (selectedUnit?.upgrades ?? []).map((u) => (
-                  <Card key={u.id} style={[styles.templateCard, { marginTop: spacing.sm }]}>
+                  <Card key={u.id} style={[styles.editTemplateCard, { marginTop: spacing.sm }]}>
                     <Card.Content>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text variant="titleMedium" style={styles.textPrimary}>
+                        <Text variant="titleMedium" style={styles.editTextPrimary}>
                           {u.name}
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Text variant="bodySmall" style={styles.textMuted}>
+                          <Text variant="bodySmall" style={styles.editTextMuted}>
                             {u.points} pts
                           </Text>
                           <IconButton
                             icon="trash-can-outline"
                             size={18}
-                            iconColor={colors.text}
+                            iconColor={terminal.textPrimary}
                             onPress={() => removeUpgradeFromTitan(u.id)}
                           />
                         </View>
                       </View>
                       {(u.rules ?? []).slice(0, 2).map((r, idx) => (
-                        <Text key={`${u.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                        <Text key={`${u.id}:r:${idx}`} variant="bodySmall" style={styles.editManipleRule}>
                           {r}
                         </Text>
                       ))}
@@ -1603,21 +1624,21 @@ export default function HomeScreen({
         <Modal
           visible={isTraitPickerOpen}
           onDismiss={() => setIsTraitPickerOpen(false)}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
               Select Personal Trait
             </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsTraitPickerOpen(false)} />
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setIsTraitPickerOpen(false)} />
           </View>
           <View style={styles.templateListContainer}>
             {isTraitsLoading ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 Loading traits from BattleScribe…
               </Text>
             ) : princepsTraitTemplates.length === 0 ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 No personal traits found in BattleScribe data.
               </Text>
             ) : (
@@ -1635,14 +1656,14 @@ export default function HomeScreen({
                 if (!legioSelectionEntryId) {
                   if (standard.length === 0) {
                     return (
-                      <Text variant="bodySmall" style={styles.sectionEmpty}>
+                      <Text variant="bodySmall" style={styles.editSectionEmpty}>
                         No standard personal traits found in BattleScribe data.
                       </Text>
                     );
                   }
                   return (
                     <View style={{ flex: 1 }}>
-                      <Text variant="bodySmall" style={styles.sectionEmpty}>
+                      <Text variant="bodySmall" style={styles.editSectionEmpty}>
                         Select a legion for the maniple to add legion-specific personal traits.
                       </Text>
                       <FlatList
@@ -1654,25 +1675,25 @@ export default function HomeScreen({
                         renderItem={({ item }) => {
                           if (item.kind === 'header') {
                             return (
-                              <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                              <Text variant="bodySmall" style={styles.editSectionTitle}>
                                 {item.title}
                               </Text>
                             );
                           }
                           return (
                             <Card
-                              style={styles.templateCard}
+                              style={styles.editTemplateCard}
                               onPress={() => {
                                 setPrincepsTrait(item.t.id);
                                 setIsTraitPickerOpen(false);
                               }}
                             >
                               <Card.Content>
-                                <Text variant="titleMedium" style={styles.textPrimary}>
+                                <Text variant="titleMedium" style={styles.editTextPrimary}>
                                   {item.t.name}
                                 </Text>
                                 {(item.t.rules ?? []).slice(0, 2).map((r, idx) => (
-                                  <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                                  <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.editManipleRule}>
                                     {r}
                                   </Text>
                                 ))}
@@ -1687,7 +1708,7 @@ export default function HomeScreen({
 
                 if (standard.length === 0 && legionSpecific.length === 0) {
                   return (
-                    <Text variant="bodySmall" style={styles.sectionEmpty}>
+                    <Text variant="bodySmall" style={styles.editSectionEmpty}>
                       No personal traits found for this legion in BattleScribe data.
                     </Text>
                   );
@@ -1708,25 +1729,25 @@ export default function HomeScreen({
                     renderItem={({ item }) => {
                       if (item.kind === 'header') {
                         return (
-                          <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                          <Text variant="bodySmall" style={styles.editSectionTitle}>
                             {item.title}
                           </Text>
                         );
                       }
                       return (
                         <Card
-                          style={styles.templateCard}
+                          style={styles.editTemplateCard}
                           onPress={() => {
                             setPrincepsTrait(item.t.id);
                             setIsTraitPickerOpen(false);
                           }}
                         >
                           <Card.Content>
-                            <Text variant="titleMedium" style={styles.textPrimary}>
+                            <Text variant="titleMedium" style={styles.editTextPrimary}>
                               {item.t.name}
                             </Text>
                             {(item.t.rules ?? []).slice(0, 2).map((r, idx) => (
-                              <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.manipleRule}>
+                              <Text key={`${item.t.id}:r:${idx}`} variant="bodySmall" style={styles.editManipleRule}>
                                 {r}
                               </Text>
                             ))}
@@ -1744,41 +1765,42 @@ export default function HomeScreen({
         <Modal
           visible={isUpgradePickerOpen}
           onDismiss={() => setIsUpgradePickerOpen(false)}
-          contentContainerStyle={styles.addModal}
+          contentContainerStyle={styles.editModal}
         >
-          <View style={styles.addHeaderRow}>
-            <Text variant="titleLarge" style={styles.addTitle}>
+          <View style={styles.editModalHeader}>
+            <Text variant="titleLarge" style={styles.editModalTitle}>
               Add Upgrade
             </Text>
-            <IconButton icon="close" iconColor={colors.text} onPress={() => setIsUpgradePickerOpen(false)} />
+            <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setIsUpgradePickerOpen(false)} />
           </View>
           <View style={styles.templateListContainer}>
             {isUpgradesLoading ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 Loading upgrades from BattleScribe…
               </Text>
             ) : upgradeTemplates.length === 0 ? (
-              <Text variant="bodySmall" style={styles.sectionEmpty}>
+              <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 No upgrades found in BattleScribe data.
               </Text>
             ) : (
               <View style={{ flex: 1 }}>
                 <View style={{ marginBottom: spacing.sm }}>
                   {activeBattlegroup?.allegiance === 'loyalist' || activeBattlegroup?.allegiance === 'traitor' ? (
-                    <Text variant="bodySmall" style={styles.templateMeta}>
+                    <Text variant="bodySmall" style={styles.editTextMuted}>
                       Allegiance: {activeBattlegroup.allegiance === 'loyalist' ? 'Loyalist' : 'Traitor'} (from battlegroup)
                     </Text>
                   ) : (
                     <>
-                      <Text variant="bodySmall" style={styles.templateMeta}>
+                      <Text variant="bodySmall" style={styles.editTextMuted}>
                         Set allegiance on the battlegroup to see loyalty-specific wargear.
                       </Text>
                       <SegmentedButtons
                         value={loyaltyFilter}
                         onValueChange={(v) => setLoyaltyFilter(v as 'loyalist' | 'traitor')}
+                        theme={terminalSegmentedTheme}
                         buttons={[
-                          { value: 'loyalist', label: 'Loyalist' },
-                          { value: 'traitor', label: 'Traitor' },
+                          { value: 'loyalist', label: 'Loyalist', checkedColor: terminal.textPrimary, uncheckedColor: terminal.textSecondary },
+                          { value: 'traitor', label: 'Traitor', checkedColor: terminal.textPrimary, uncheckedColor: terminal.textSecondary },
                         ]}
                       />
                     </>
@@ -1817,17 +1839,17 @@ export default function HomeScreen({
                   const renderCard = (item: (typeof upgradeTemplates)[number]) => (
                     <Card
                       key={item.id}
-                      style={styles.templateCard}
+                      style={styles.editTemplateCard}
                       onPress={() => {
                         addUpgradeToTitan(item.id);
                         setIsUpgradePickerOpen(false);
                       }}
                     >
                       <Card.Content>
-                        <Text variant="titleMedium" style={styles.textPrimary}>
+                        <Text variant="titleMedium" style={styles.editTextPrimary}>
                           {item.name}
                         </Text>
-                        <Text variant="bodySmall" style={styles.textMuted}>
+                        <Text variant="bodySmall" style={styles.editTextMuted}>
                           {item.points} pts
                         </Text>
                       </Card.Content>
@@ -1874,21 +1896,21 @@ export default function HomeScreen({
                       renderItem={({ item }) => {
                         if (item.kind === 'header') {
                           return (
-                            <Text variant="bodySmall" style={styles.ruleSectionTitle}>
+                            <Text variant="bodySmall" style={styles.editSectionTitle}>
                               {item.title}
                             </Text>
                           );
                         }
                         if (item.kind === 'subheader') {
                           return (
-                            <Text variant="bodySmall" style={[styles.templateMeta, { marginTop: spacing.sm }]}>
+                            <Text variant="bodySmall" style={[styles.editTextMuted, { marginTop: spacing.sm }]}>
                               {item.title}
                             </Text>
                           );
                         }
                         if (item.kind === 'empty') {
                           return (
-                            <Text variant="bodySmall" style={styles.sectionEmpty}>
+                            <Text variant="bodySmall" style={styles.editSectionEmpty}>
                               {item.title}
                             </Text>
                           );
@@ -1904,6 +1926,7 @@ export default function HomeScreen({
         </Modal>
       </Portal>
     </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
@@ -1911,6 +1934,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  containerTransparent: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     padding: spacing.lg,
@@ -1935,6 +1962,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panelAlt,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  /** Titan unit cards: same terminal look as maniple cards */
+  titanCard: {
+    marginBottom: spacing.md,
+    backgroundColor: terminal.panelBg,
+    borderWidth: 1,
+    borderColor: terminal.border,
+  },
+  titanCardTitle: {
+    flex: 1,
+    color: terminal.textPrimary,
+  },
+  titanCardWeapons: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    color: terminal.textSecondary,
+  },
+  titanCardPoints: {
+    marginRight: spacing.xs,
+    color: terminal.textSecondary,
+  },
+  /** RobotoMono for section labels inside maniple card only */
+  manipleCardLabel: {
+    fontFamily: 'RobotoMono_700Bold',
   },
   fab: {
     position: 'absolute',
@@ -1968,9 +2019,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: colors.text,
-  },
-  sectionMeta: {
-    color: colors.textMuted,
   },
   reloadSlot: {
     width: 36,
@@ -2024,9 +2072,9 @@ const styles = StyleSheet.create({
   },
   manipleCard: {
     marginBottom: spacing.md,
-    backgroundColor: colors.panel,
+    backgroundColor: terminal.panelBg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: terminal.border,
   },
   manipleMeta: {
     marginTop: 4,
@@ -2081,6 +2129,63 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     height: '85%',
     maxHeight: '85%',
+  },
+  /** Terminal-styled modals (edit titan, edit maniple, pickers) to match battlegroup edit. */
+  editModal: {
+    backgroundColor: terminal.panelBg,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    height: '85%',
+    maxHeight: '85%',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editModalTitle: {
+    color: terminal.textPrimary,
+    fontFamily: 'RobotoMono_700Bold',
+  },
+  editModalLabel: {
+    color: terminal.textPrimary,
+  },
+  editNameInput: {
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  editOutlinedButton: {
+    borderColor: terminal.border,
+  },
+  editTemplateCard: {
+    backgroundColor: terminal.inactiveFill,
+    borderWidth: 1,
+    borderColor: terminal.border,
+    marginBottom: spacing.md,
+  },
+  editSectionTitle: {
+    color: terminal.textPrimary,
+    marginTop: spacing.sm,
+  },
+  editSectionEmpty: {
+    color: terminal.textSecondary,
+  },
+  editTextPrimary: {
+    color: terminal.textPrimary,
+  },
+  editTextMuted: {
+    color: terminal.textSecondary,
+  },
+  editManipleRule: {
+    color: terminal.textSecondary,
+    marginTop: spacing.xs,
+  },
+  editLegionRule: {
+    color: terminal.textSecondary,
+    marginTop: spacing.xs,
   },
   addHeaderRow: {
     flexDirection: 'row',
@@ -2137,6 +2242,11 @@ const styles = StyleSheet.create({
   unitTitle: {
     flex: 1,
     paddingRight: spacing.sm,
+    color: terminal.textPrimary,
+    fontFamily: 'RobotoMono_700Bold',
+  },
+  unitTitleFullWidth: {
+    flex: 1,
     color: colors.text,
   },
   unitPoints: {

@@ -1,16 +1,19 @@
-import {
-  loadAllTitanTemplatesFromBattleScribe,
-  loadLegionTemplatesFromBattleScribe,
-  loadManipleTemplatesFromBattleScribe,
-  loadUpgradeTemplatesFromBattleScribe,
-  loadPrincepsTraitTemplatesFromBattleScribe,
-  type BattleScribeAllTitansLoadResult,
-  type BattleScribeLegionsLoadResult,
-  type BattleScribeManiplesLoadResult,
-  type BattleScribeUpgradesLoadResult,
-  type BattleScribePrincepsTraitsLoadResult,
-} from '../adapters/battlescribe/battlescribeAdapter';
-import { clearTitanDataOverridesCache } from './titanDataOverrides';
+/**
+ * Single-fetch template cache. Loads engine-kill/generated/templates.json once
+ * and exposes titans, banners, maniples, legions, upgrades, and princeps traits
+ * via the same snapshot/load API that hooks and screens already use.
+ * No override/merge at runtime; templates come only from templates.json.
+ */
+
+import type {
+  AllTitansLoadResult,
+  LegionsLoadResult,
+  ManiplesLoadResult,
+  PrincepsTraitsLoadResult,
+  UpgradesLoadResult,
+} from '../types/templateLoading';
+import { DEFAULT_DATA_BASE_URL } from '../utils/constants';
+import { loadTemplatesFromJson, type TemplatesPayload } from './templatesLoader';
 
 type CacheStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -21,11 +24,13 @@ type CacheEntry<T> = {
   promise?: Promise<T>;
 };
 
-const titanCache: CacheEntry<BattleScribeAllTitansLoadResult> = { status: 'idle' };
-const manipleCache: CacheEntry<BattleScribeManiplesLoadResult> = { status: 'idle' };
-const legionCache: CacheEntry<BattleScribeLegionsLoadResult> = { status: 'idle' };
-const upgradeCache: CacheEntry<BattleScribeUpgradesLoadResult> = { status: 'idle' };
-const princepsTraitCache: CacheEntry<BattleScribePrincepsTraitsLoadResult> = { status: 'idle' };
+/** Banner slice shape for useBannerTemplates (templates + warnings, no missingMaxData/legendTitans). */
+export interface BannerLoadResult {
+  templates: import('../models/UnitTemplate').UnitTemplate[];
+  warnings: string[];
+}
+
+const payloadCache: CacheEntry<TemplatesPayload> = { status: 'idle' };
 
 async function loadOnce<T>(cache: CacheEntry<T>, loader: () => Promise<T>): Promise<T> {
   if (cache.status === 'loaded' && cache.result) return cache.result;
@@ -52,73 +57,167 @@ async function loadOnce<T>(cache: CacheEntry<T>, loader: () => Promise<T>): Prom
   return await cache.promise;
 }
 
-function reset<T>(cache: CacheEntry<T>) {
-  cache.status = 'idle';
-  cache.result = undefined;
-  cache.error = undefined;
-  cache.promise = undefined;
+function getPayloadSnapshot() {
+  return {
+    status: payloadCache.status,
+    result: payloadCache.result,
+    error: payloadCache.error,
+  } as const;
+}
+
+function resetPayload() {
+  payloadCache.status = 'idle';
+  payloadCache.result = undefined;
+  payloadCache.error = undefined;
+  payloadCache.promise = undefined;
+}
+
+async function loadPayloadOnce(): Promise<TemplatesPayload> {
+  return loadOnce(payloadCache, () => loadTemplatesFromJson(DEFAULT_DATA_BASE_URL));
+}
+
+/** Map payload to the titan result shape (templates.json has no missingMaxData/legendTitans). */
+function toTitanResult(p: TemplatesPayload): AllTitansLoadResult {
+  return {
+    templates: p.titans,
+    warnings: p.warnings,
+    missingMaxData: [],
+    legendTitans: [],
+  };
+}
+
+/** Map payload to banner result shape. */
+function toBannerResult(p: TemplatesPayload): BannerLoadResult {
+  return { templates: p.banners, warnings: p.warnings };
 }
 
 export const battleScribeCache = {
+  // Single payload load (used by all category loaders)
+  async loadTemplatesPayloadOnce(): Promise<TemplatesPayload> {
+    return loadPayloadOnce();
+  },
+
   // Titans
   getTitanResultSnapshot() {
-    return { status: titanCache.status, result: titanCache.result, error: titanCache.error } as const;
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result ? toTitanResult(snap.result) : undefined,
+      error: snap.error,
+    } as const;
   },
-  async loadTitansOnce() {
-    return await loadOnce(titanCache, () => loadAllTitanTemplatesFromBattleScribe());
+  async loadTitansOnce(): Promise<AllTitansLoadResult> {
+    const p = await loadPayloadOnce();
+    return toTitanResult(p);
   },
   async reloadTitans() {
-    reset(titanCache);
-    clearTitanDataOverridesCache();
+    resetPayload();
     return await this.loadTitansOnce();
+  },
+
+  // Banners (from same payload)
+  getBannerResultSnapshot() {
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result ? toBannerResult(snap.result) : undefined,
+      error: snap.error,
+    } as const;
+  },
+  async loadBannersOnce(): Promise<BannerLoadResult> {
+    const p = await loadPayloadOnce();
+    return toBannerResult(p);
+  },
+  async reloadBanners() {
+    resetPayload();
+    return await this.loadBannersOnce();
   },
 
   // Maniples
   getManipleResultSnapshot() {
-    return { status: manipleCache.status, result: manipleCache.result, error: manipleCache.error } as const;
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result
+        ? ({ maniples: snap.result.maniples, warnings: snap.result.warnings } as ManiplesLoadResult)
+        : undefined,
+      error: snap.error,
+    } as const;
   },
-  async loadManiplesOnce() {
-    return await loadOnce(manipleCache, () => loadManipleTemplatesFromBattleScribe());
+  async loadManiplesOnce(): Promise<ManiplesLoadResult> {
+    const p = await loadPayloadOnce();
+    return { maniples: p.maniples, warnings: p.warnings };
   },
   async reloadManiples() {
-    reset(manipleCache);
+    resetPayload();
     return await this.loadManiplesOnce();
   },
 
   // Legions
   getLegionResultSnapshot() {
-    return { status: legionCache.status, result: legionCache.result, error: legionCache.error } as const;
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result
+        ? ({ legions: snap.result.legions, warnings: snap.result.warnings } as LegionsLoadResult)
+        : undefined,
+      error: snap.error,
+    } as const;
   },
-  async loadLegionsOnce() {
-    return await loadOnce(legionCache, () => loadLegionTemplatesFromBattleScribe());
+  async loadLegionsOnce(): Promise<LegionsLoadResult> {
+    const p = await loadPayloadOnce();
+    return { legions: p.legions, warnings: p.warnings };
   },
   async reloadLegions() {
-    reset(legionCache);
+    resetPayload();
     return await this.loadLegionsOnce();
   },
 
   // Upgrades
   getUpgradeResultSnapshot() {
-    return { status: upgradeCache.status, result: upgradeCache.result, error: upgradeCache.error } as const;
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result
+        ? ({ upgrades: snap.result.upgrades, warnings: snap.result.warnings } as UpgradesLoadResult)
+        : undefined,
+      error: snap.error,
+    } as const;
   },
-  async loadUpgradesOnce() {
-    return await loadOnce(upgradeCache, () => loadUpgradeTemplatesFromBattleScribe());
+  async loadUpgradesOnce(): Promise<UpgradesLoadResult> {
+    const p = await loadPayloadOnce();
+    return { upgrades: p.upgrades, warnings: p.warnings };
   },
   async reloadUpgrades() {
-    reset(upgradeCache);
+    resetPayload();
     return await this.loadUpgradesOnce();
   },
 
   // Princeps Traits
   getPrincepsTraitResultSnapshot() {
-    return { status: princepsTraitCache.status, result: princepsTraitCache.result, error: princepsTraitCache.error } as const;
+    const snap = getPayloadSnapshot();
+    return {
+      status: snap.status,
+      result: snap.result
+        ? ({
+            traits: snap.result.princepsTraits,
+            warnings: snap.result.warnings,
+          } as PrincepsTraitsLoadResult)
+        : undefined,
+      error: snap.error,
+    } as const;
   },
-  async loadPrincepsTraitsOnce() {
-    return await loadOnce(princepsTraitCache, () => loadPrincepsTraitTemplatesFromBattleScribe());
+  async loadPrincepsTraitsOnce(): Promise<PrincepsTraitsLoadResult> {
+    const p = await loadPayloadOnce();
+    return { traits: p.princepsTraits, warnings: p.warnings };
   },
   async reloadPrincepsTraits() {
-    reset(princepsTraitCache);
+    resetPayload();
     return await this.loadPrincepsTraitsOnce();
   },
-} as const;
 
+  /** Reset all caches (single payload). Reload triggers one fetch for all categories. */
+  resetAll() {
+    resetPayload();
+  },
+} as const;

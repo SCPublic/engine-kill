@@ -1343,11 +1343,235 @@ export async function loadQuestorisWeaponsFromBattleScribe(
   return { weapons, warnings, specialRules: Array.from(specialRulesSet) };
 }
 
+/** Derive a URL-style slug from a display name (lowercase, hyphens, no leading/trailing dash). */
+function nameToSlug(name: string): string {
+  const s = (name ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/['']/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || 'unknown';
+}
+
+/** Return prefix + a slug that is unique in `used`; on collision append -disambiguateWith or -2, -3. */
+function ensureUniqueSlug(
+  prefix: string,
+  baseSlug: string,
+  used: Set<string>,
+  disambiguateWith: string
+): string {
+  let slug = baseSlug;
+  let full = prefix + slug;
+  let n = 0;
+  while (used.has(full)) {
+    n += 1;
+    slug = n === 1 ? `${baseSlug}-${disambiguateWith}` : `${baseSlug}-${n}`;
+    full = prefix + slug;
+  }
+  used.add(full);
+  return full;
+}
+
+export interface BattleScribeBannersLoadResult {
+  templates: UnitTemplate[];
+  warnings: string[];
+}
+
+type BannerOverridesJson = Record<
+  string,
+  {
+    structurePointsMax?: number;
+    minKnights?: number;
+    maxKnights?: number;
+    bannerBasePoints?: number;
+    bannerPointsPerKnight?: number;
+  }
+>;
+
+function isBannerSelectionEntry(se: XmlNode): boolean {
+  const type = (se.attributes.type || '').toLowerCase();
+  if (type !== 'unit' && type !== 'model' && type !== '') return false;
+  const name = (se.attributes.name || '').trim();
+  return name.endsWith('Banner');
+}
+
+/**
+ * Loads banner (knight/stalker) templates from BattleScribe XML.
+ * Finds all selectionEntry with type=unit and name ending in "Banner".
+ * Applies engine-kill/banner-overrides.json by key "bs:" + entry id.
+ */
+export async function loadBannerTemplatesFromBattleScribe(
+  config: Partial<BattleScribeSourceConfig> = {}
+): Promise<BattleScribeBannersLoadResult> {
+  const source: BattleScribeSourceConfig = { ...DEFAULT_SOURCE, ...config };
+  const warnings: string[] = [];
+
+  const xmlStrings: string[] = [];
+  for (const file of source.files) {
+    const url = encodeURI(`${source.baseUrl}${file}`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      warnings.push(`Failed to fetch BattleScribe file: ${file} (${res.status})`);
+      continue;
+    }
+    xmlStrings.push(await res.text());
+  }
+
+  const baseUrl = source.baseUrl.endsWith('/') ? source.baseUrl : `${source.baseUrl}/`;
+  let bannerOverrides: BannerOverridesJson = {};
+  try {
+    const ovRes = await fetch(`${baseUrl}engine-kill/banner-overrides.json`);
+    if (ovRes.ok) bannerOverrides = (await ovRes.json()) as BannerOverridesJson;
+  } catch {
+    warnings.push('Could not fetch engine-kill/banner-overrides.json');
+  }
+
+  const defaultDamageLocation = {
+    max: 1,
+    armorRolls: { direct: '—', devastating: '—', critical: '—' } as ArmorRolls,
+  };
+  const defaultDamage = {
+    head: { ...defaultDamageLocation },
+    body: { ...defaultDamageLocation, max: 2 },
+    legs: { ...defaultDamageLocation },
+  };
+
+  const baseStats: UnitStats = {
+    command: 5,
+    ballisticSkill: 5,
+    speed: '10"',
+    weaponSkill: 5,
+    manoeuvre: '2/4',
+    servitorClades: 0,
+  };
+
+  const placeholderWeapon: WeaponTemplate = {
+    id: 'placeholder',
+    name: 'Placeholder weapon',
+    points: 0,
+    shortRange: 0,
+    longRange: '-',
+    accuracyShort: '-',
+    accuracyLong: '-',
+    dice: 0,
+    strength: 0,
+    traits: [],
+    specialRules: [],
+    mountType: 'arm',
+  };
+
+  const bannerEntries: XmlNode[] = [];
+  const gstFile = 'Adeptus Titanicus 2018.gst';
+
+  for (let i = 0; i < xmlStrings.length; i++) {
+    if (source.files[i] !== gstFile) continue;
+    const doc = parseXml(xmlStrings[i]!);
+    const selectionEntries = findAll(doc, (n) => n.name === 'selectionEntry');
+    for (const se of selectionEntries) {
+      if (isBannerSelectionEntry(se)) bannerEntries.push(se);
+    }
+    break;
+  }
+
+  let questorisWeapons: WeaponTemplate[] = [];
+  try {
+    const qw = await loadQuestorisWeaponsFromBattleScribe(config);
+    questorisWeapons = qw.weapons;
+  } catch {
+    // use placeholder only
+  }
+
+  const templates: UnitTemplate[] = [];
+  const usedBannerSlugs = new Set<string>();
+
+  for (const se of bannerEntries) {
+    const rawId = se.attributes.id?.trim();
+    const rawName = se.attributes.name?.trim();
+    if (!rawId || !rawName) continue;
+
+    const name = sanitizeBattleScribeName(rawName);
+    const slug = ensureUniqueSlug(
+      '',
+      nameToSlug(name),
+      usedBannerSlugs,
+      rawId.replace(/-/g, '').slice(0, 8)
+    );
+    const chars = getCharacteristicMap(se);
+    const stats = applyStatsOverlay({ ...baseStats }, chars);
+    const nameLower = rawName.toLowerCase();
+    const hasCarapace = nameLower.includes('questoris');
+
+    const overrideKey = `bs:${rawId}`;
+    const ov = bannerOverrides[overrideKey];
+    if (!(overrideKey in bannerOverrides)) {
+      warnings.push(`Banner "${name}" (${rawId}) has no entry in banner-overrides.json`);
+    }
+
+    const structurePointsMax = ov?.structurePointsMax ?? 4;
+    const damage = { ...defaultDamage };
+    if (structurePointsMax <= 4) {
+      damage.head.max = 1;
+      damage.body.max = 2;
+      damage.legs.max = 1;
+    } else if (structurePointsMax <= 6) {
+      damage.head.max = 2;
+      damage.body.max = 2;
+      damage.legs.max = 2;
+    } else {
+      damage.head.max = 4;
+      damage.body.max = 8;
+      damage.legs.max = 5;
+    }
+
+    const availableWeapons =
+      nameLower.includes('questoris') && questorisWeapons.length > 0 ? questorisWeapons : [placeholderWeapon];
+
+    const tpl: UnitTemplate = {
+      id: slug,
+      name,
+      unitType: 'banner',
+      specialRules: getRulesFromSelectionEntry(se),
+      defaultStats: {
+        voidShields: { max: 1 },
+        voidShieldSaves: [],
+        maxHeat: 4,
+        plasmaReactorMax: 1,
+        damage,
+        hasCarapaceWeapon: hasCarapace,
+        stats,
+        structurePointsMax,
+        ionShieldSaves: ['Ion Shield Save: 5+'],
+      },
+      availableWeapons,
+      ...(ov?.minKnights !== undefined && { minKnights: ov.minKnights }),
+      ...(ov?.maxKnights !== undefined && { maxKnights: ov.maxKnights }),
+      ...(ov?.bannerBasePoints !== undefined && { bannerBasePoints: ov.bannerBasePoints }),
+      ...(ov?.bannerPointsPerKnight !== undefined && { bannerPointsPerKnight: ov.bannerPointsPerKnight }),
+    };
+
+    if (nameLower.includes('questoris') && questorisWeapons.length > 0) {
+      const melee = questorisWeapons.find((w) => w.traits.includes('Melee'));
+      const thermal = questorisWeapons.find((w) => w.name.toLowerCase().includes('thermal'));
+      if (melee) tpl.defaultLeftWeaponId = melee.id;
+      if (thermal) tpl.defaultRightWeaponId = thermal.id;
+    }
+
+    templates.push(tpl);
+  }
+
+  if (templates.length === 0) {
+    warnings.push('No banner unit entries (name ending in "Banner") were found in BattleScribe files.');
+  }
+
+  return { templates, warnings };
+}
+
 function inferManipleTemplateIdFromName(name: string, bsId?: string): string {
   const n = name.toLowerCase();
-  if (bsId) return `bsmaniple:${bsId}`;
+  if (bsId) return `maniple:${bsId}`;
   const slug = n.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  return slug ? `bsmaniple:${slug}` : 'bsmaniple:unknown';
+  return slug ? `maniple:${slug}` : 'maniple:unknown';
 }
 
 function isLikelyManipleSelectionEntry(se: XmlNode): boolean {
@@ -1371,10 +1595,10 @@ function extractFirstRuleText(se: XmlNode): string | undefined {
 
 function inferLegionTemplateIdFromSelectionEntry(se: XmlNode): string {
   const bsId = se.attributes.id;
-  if (bsId) return `bslegio:${bsId}`;
+  if (bsId) return `legio:${bsId}`;
   const rawName = se.attributes.name?.trim() || '';
   const slug = rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  return slug ? `bslegio:${slug}` : 'bslegio:unknown';
+  return slug ? `legio:${slug}` : 'legio:unknown';
 }
 
 function selectionEntryToLegionTemplate(se: XmlNode): LegionTemplate | null {
@@ -1440,7 +1664,7 @@ function selectionEntryToUpgradeTemplate(
   }
 
   const bsId = se.attributes.id;
-  const id = bsId ? `bsupg:${bsId}` : `bsupg:${lname.replace(/[^a-z0-9]+/g, '-')}`;
+  const id = bsId ? `upgrade:${bsId}` : `upgrade:${lname.replace(/[^a-z0-9]+/g, '-')}`;
   const points = parsePointsFromSelectionEntry(se) ?? 0;
 
   const ruleNodes = findAll(se, (n) => n.name === 'rule');
@@ -1696,6 +1920,17 @@ export async function loadManipleTemplatesFromBattleScribe(
   }
 
   const maniples = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const usedManipleSlugs = new Set<string>();
+  for (const m of maniples) {
+    const origId = m.id;
+    const baseSlug = nameToSlug(m.name);
+    m.id = ensureUniqueSlug(
+      'maniple:',
+      baseSlug,
+      usedManipleSlugs,
+      origId.replace('maniple:', '').replace(/-/g, '').slice(0, 8)
+    );
+  }
   if (maniples.length === 0) {
     warnings.push('No maniple/formation entries were recognized in fetched BattleScribe files. Falling back to local maniple templates only.');
   }
@@ -1740,6 +1975,17 @@ export async function loadLegionTemplatesFromBattleScribe(
   }
 
   found.sort((a, b) => a.name.localeCompare(b.name));
+  const usedLegioSlugs = new Set<string>();
+  for (const l of found) {
+    const origId = l.id;
+    const baseSlug = nameToSlug(l.name);
+    l.id = ensureUniqueSlug(
+      'legio:',
+      baseSlug,
+      usedLegioSlugs,
+      origId.replace('legio:', '').replace(/-/g, '').slice(0, 8)
+    );
+  }
   if (found.length === 0) warnings.push('No legions were recognized in fetched BattleScribe files.');
 
   return { legions: found, warnings };
@@ -1829,7 +2075,7 @@ export async function loadUpgradeTemplatesFromBattleScribe(
     upgrades.sort((a, b) => a.name.localeCompare(b.name));
   } else {
     upgrades.push({
-      id: 'bsupg:meltaguns',
+      id: 'upgrade:meltaguns',
       name: 'Meltaguns',
       points: 5,
       rules: ['Knight Banner wargear: one Knight in the Banner may replace one of its weapons with Meltaguns.'],
@@ -1837,6 +2083,17 @@ export async function loadUpgradeTemplatesFromBattleScribe(
       bannerOnly: true,
     });
     upgrades.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  const usedUpgradeSlugs = new Set<string>();
+  for (const u of upgrades) {
+    const origId = u.id;
+    const baseSlug = nameToSlug(u.name);
+    u.id = ensureUniqueSlug(
+      'upgrade:',
+      baseSlug,
+      usedUpgradeSlugs,
+      origId.replace('upgrade:', '').replace(/-/g, '').slice(0, 8)
+    );
   }
   if (upgrades.length === 0) warnings.push('No wargear upgrades were resolved from BattleScribe data.');
   return { upgrades, warnings };
@@ -1912,7 +2169,7 @@ export async function loadPrincepsTraitTemplatesFromBattleScribe(
           if (!rawName || !bsId) continue;
 
           const name = sanitizeBattleScribeName(rawName).replace(/^\d+\s+/, '').trim();
-          const id = `bstrait:${bsId}`;
+          const id = `trait:${bsId}`;
 
           const ruleNodes = findAll(se, (n) => n.name === 'rule');
           const rules: string[] = [];
@@ -1933,6 +2190,17 @@ export async function loadPrincepsTraitTemplatesFromBattleScribe(
   }
 
   traits.sort((a, b) => a.name.localeCompare(b.name));
+  const usedTraitSlugs = new Set<string>();
+  for (const t of traits) {
+    const origId = t.id;
+    const baseSlug = nameToSlug(t.name);
+    t.id = ensureUniqueSlug(
+      'trait:',
+      baseSlug,
+      usedTraitSlugs,
+      origId.replace('trait:', '').replace(/-/g, '').slice(0, 8)
+    );
+  }
   if (!traits.length) warnings.push('No Princeps trait templates were resolved from BattleScribe data.');
 
   return { traits, warnings };

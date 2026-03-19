@@ -3,7 +3,8 @@ import { View, StyleSheet, FlatList, Linking, TouchableOpacity } from 'react-nat
 import { Card, FAB as Fab, IconButton, Modal, Portal, SegmentedButtons, Text, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGame } from '../context/GameContext';
-import { colors, radius, spacing } from '../theme/tokens';
+import { colors, radius, spacing, terminal } from '../theme/tokens';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { Battlegroup, BattlegroupAllegiance } from '../models/Battlegroup';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
 import {
@@ -16,6 +17,22 @@ import {
 } from '../utils/constants';
 
 const WEB_MAX_WIDTH = 960;
+
+/** Theme override so SegmentedButtons match the command terminal (green on dark panel). */
+const terminalSegmentedTheme = {
+  colors: {
+    secondaryContainer: terminal.panelBg,
+    outline: terminal.border,
+    onSecondaryContainer: terminal.textPrimary,
+    onSurface: terminal.textSecondary,
+  },
+} as const;
+
+/** Allegiance segment buttons with terminal label/icon colors. */
+const allegianceButtons: { value: BattlegroupAllegiance; label: string; checkedColor: string; uncheckedColor: string }[] = [
+  { value: 'loyalist', label: 'Loyalist', checkedColor: terminal.textPrimary, uncheckedColor: terminal.textSecondary },
+  { value: 'traitor', label: 'Traitor', checkedColor: terminal.textPrimary, uncheckedColor: terminal.textSecondary },
+];
 
 export default function BattlegroupListScreen() {
   const { state, createBattlegroup, updateBattlegroup, deleteBattlegroupById, setActiveBattlegroupId } = useGame();
@@ -115,7 +132,8 @@ export default function BattlegroupListScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenWrapper>
+    <SafeAreaView style={styles.containerTransparent} edges={['top']}>
       <View style={styles.page}>
         <View style={styles.dataRepoRow}>
           <TouchableOpacity
@@ -140,17 +158,14 @@ export default function BattlegroupListScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.header}>
-          <Text variant="titleLarge" style={styles.textPrimary}>
+          <Text variant="titleLarge" style={styles.headerTitle}>
             Battlegroups
-          </Text>
-          <Text variant="bodySmall" style={styles.textMuted}>
-            {state.battlegroups.length}
           </Text>
         </View>
 
         {sorted.length === 0 ? (
           <View style={styles.empty}>
-            <Text variant="bodyMedium" style={styles.textMuted}>
+            <Text variant="bodyMedium" style={styles.emptyText}>
               Create your first battlegroup.
             </Text>
           </View>
@@ -164,10 +179,10 @@ export default function BattlegroupListScreen() {
                 <Card.Content>
                   <View style={styles.row}>
                     <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                      <Text variant="titleMedium" style={styles.textPrimary} numberOfLines={1}>
+                      <Text variant="titleMedium" style={styles.cardTitle} numberOfLines={1}>
                         {item.name}
                       </Text>
-                      <Text variant="bodySmall" style={styles.textMuted} numberOfLines={1}>
+                      <Text variant="bodySmall" style={styles.cardSubtitle} numberOfLines={1}>
                         {getBattlegroupPoints(item.id)} pts · {item.allegiance === 'traitor' ? 'Traitor' : 'Loyalist'}
                       </Text>
                     </View>
@@ -175,14 +190,14 @@ export default function BattlegroupListScreen() {
                       <IconButton
                         icon="pencil-outline"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         onPress={() => openRename(item)}
                         accessibilityLabel={`Rename ${item.name}`}
                       />
                       <IconButton
                         icon="trash-can-outline"
                         size={18}
-                        iconColor={colors.text}
+                        iconColor={terminal.textPrimary}
                         onPress={() => deleteBattlegroupById(item.id)}
                         accessibilityLabel={`Delete ${item.name}`}
                       />
@@ -197,7 +212,7 @@ export default function BattlegroupListScreen() {
         <Fab
           icon="plus"
           style={styles.fab}
-          color={colors.text}
+          color={terminal.textPrimary}
           onPress={() => setIsCreateOpen(true)}
           accessibilityLabel="Create battlegroup"
         />
@@ -205,10 +220,10 @@ export default function BattlegroupListScreen() {
         <Portal>
           <Modal visible={isCreateOpen} onDismiss={() => setIsCreateOpen(false)} contentContainerStyle={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text variant="titleLarge" style={styles.textPrimary}>
+              <Text variant="titleLarge" style={styles.modalTitle}>
                 New battlegroup
               </Text>
-              <IconButton icon="close" iconColor={colors.text} onPress={() => setIsCreateOpen(false)} />
+              <IconButton icon="close" iconColor={terminal.textPrimary} onPress={() => setIsCreateOpen(false)} />
             </View>
             <TextInput
               label="Battlegroup name"
@@ -216,33 +231,31 @@ export default function BattlegroupListScreen() {
               onChangeText={setCreateName}
               mode="outlined"
               style={styles.input}
-              outlineColor={colors.border}
-              activeOutlineColor={colors.text}
-              textColor={colors.text}
+              outlineColor={terminal.border}
+              activeOutlineColor={terminal.textPrimary}
+              textColor={terminal.textPrimary}
             />
-            <Text variant="labelMedium" style={[styles.textPrimary, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+            <Text variant="labelMedium" style={[styles.modalLabel, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
               Allegiance
             </Text>
             <SegmentedButtons
               value={createAllegiance}
               onValueChange={(v) => setCreateAllegiance(v as BattlegroupAllegiance)}
-              buttons={[
-                { value: 'loyalist', label: 'Loyalist' },
-                { value: 'traitor', label: 'Traitor' },
-              ]}
+              theme={terminalSegmentedTheme}
+              buttons={allegianceButtons}
               style={styles.segmentedButtons}
             />
             <View style={styles.modalActions}>
-              <IconButton icon="check" iconColor={colors.text} onPress={submitCreate} accessibilityLabel="Create" />
+              <IconButton icon="check" iconColor={terminal.textPrimary} onPress={submitCreate} accessibilityLabel="Create" />
             </View>
           </Modal>
 
           <Modal visible={isRenameOpen} onDismiss={closeRename} contentContainerStyle={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text variant="titleLarge" style={styles.textPrimary}>
+              <Text variant="titleLarge" style={styles.modalTitle}>
                 Edit battlegroup
               </Text>
-              <IconButton icon="close" iconColor={colors.text} onPress={closeRename} />
+              <IconButton icon="close" iconColor={terminal.textPrimary} onPress={closeRename} />
             </View>
             <TextInput
               label="Battlegroup name"
@@ -250,29 +263,28 @@ export default function BattlegroupListScreen() {
               onChangeText={setRenameName}
               mode="outlined"
               style={styles.input}
-              outlineColor={colors.border}
-              activeOutlineColor={colors.text}
-              textColor={colors.text}
+              outlineColor={terminal.border}
+              activeOutlineColor={terminal.textPrimary}
+              textColor={terminal.textPrimary}
             />
-            <Text variant="labelMedium" style={[styles.textPrimary, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
+            <Text variant="labelMedium" style={[styles.modalLabel, { marginTop: spacing.md, marginBottom: spacing.xs }]}>
               Allegiance
             </Text>
             <SegmentedButtons
               value={renameAllegiance}
               onValueChange={(v) => setRenameAllegiance(v as BattlegroupAllegiance)}
-              buttons={[
-                { value: 'loyalist', label: 'Loyalist' },
-                { value: 'traitor', label: 'Traitor' },
-              ]}
+              theme={terminalSegmentedTheme}
+              buttons={allegianceButtons}
               style={styles.segmentedButtons}
             />
             <View style={styles.modalActions}>
-              <IconButton icon="check" iconColor={colors.text} onPress={submitRename} accessibilityLabel="Save" />
+              <IconButton icon="check" iconColor={terminal.textPrimary} onPress={submitRename} accessibilityLabel="Save" />
             </View>
           </Modal>
         </Portal>
       </View>
     </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
@@ -280,6 +292,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  containerTransparent: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   page: {
     flex: 1,
@@ -306,9 +322,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: terminal.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerTitle: {
+    color: terminal.textPrimary,
+    fontFamily: 'RobotoMono_700Bold',
   },
   listContent: {
     padding: spacing.lg,
@@ -316,9 +338,15 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.md,
-    backgroundColor: colors.panel,
+    backgroundColor: terminal.panelBg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: terminal.border,
+  },
+  cardTitle: {
+    color: terminal.textPrimary,
+  },
+  cardSubtitle: {
+    color: terminal.textSecondary,
   },
   row: {
     flexDirection: 'row',
@@ -334,14 +362,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  emptyText: {
+    color: terminal.textSecondary,
+  },
   fab: {
     position: 'absolute',
     right: spacing.lg,
     bottom: spacing.lg,
-    backgroundColor: colors.panelAlt,
+    backgroundColor: terminal.panelBg,
   },
   modal: {
-    backgroundColor: colors.panel,
+    backgroundColor: terminal.panelBg,
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
@@ -353,6 +384,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  modalTitle: {
+    color: terminal.textPrimary,
+    fontFamily: 'RobotoMono_700Bold',
+  },
+  modalLabel: {
+    color: terminal.textPrimary,
+  },
   input: {
     marginTop: spacing.md,
   },
@@ -363,12 +401,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     flexDirection: 'row',
     justifyContent: 'flex-end',
-  },
-  textPrimary: {
-    color: colors.text,
-  },
-  textMuted: {
-    color: colors.textMuted,
   },
 });
 

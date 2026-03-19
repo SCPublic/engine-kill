@@ -1,4 +1,4 @@
-import { Unit, Weapon } from '../models/Unit';
+import { CriticalDamage, Unit, Weapon } from '../models/Unit';
 import { UnitTemplate, WeaponTemplate } from '../models/UnitTemplate';
 import { storageService } from './storageService';
 
@@ -149,12 +149,16 @@ export const unitService = {
     level: 'yellow' | 'orange' | 'red' | null
   ): Unit {
     // Clear all criticals first, then set the selected one
-    const newCriticals = {
+    const newCriticals: {
+      yellow: CriticalDamage | null;
+      orange: CriticalDamage | null;
+      red: CriticalDamage | null;
+    } = {
       yellow: null,
       orange: null,
       red: null,
     };
-    
+
     if (level) {
       // Set the selected critical level (we'll use a placeholder effect for now)
       newCriticals[level] = {

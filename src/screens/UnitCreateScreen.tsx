@@ -4,13 +4,14 @@ import { Card, Text, SegmentedButtons, TextInput } from 'react-native-paper';
 import { useGame } from '../context/GameContext';
 // Temporarily disabled: import { useNavigation } from '@react-navigation/native';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
-import { bannerTemplates } from '../data/bannerTemplates';
+import { useBannerTemplates } from '../hooks/useBannerTemplates';
 import { UnitTemplate } from '../models/UnitTemplate';
 
 export default function UnitCreateScreen() {
   // Temporarily disabled: const navigation = useNavigation();
   const { addUnitFromTemplate } = useGame();
   const { titanTemplatesPlayable } = useTitanTemplates();
+  const { bannerTemplates } = useBannerTemplates();
   const [unitType, setUnitType] = useState<'titan' | 'banner'>('titan');
   const [customName, setCustomName] = useState('');
 
