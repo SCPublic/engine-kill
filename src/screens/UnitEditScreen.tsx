@@ -9,8 +9,7 @@ import IonShieldSavesDisplay from '../components/IonShieldSavesDisplay';
 import VoidShieldDisplay from '../components/VoidShieldDisplay';
 import PlasmaReactorDisplay from '../components/PlasmaReactorDisplay';
 import StatsPanel from '../components/StatsPanel';
-import WeaponMount from '../components/WeaponMount';
-import WeaponBottomSheet from '../components/WeaponBottomSheet';
+import WeaponMountTabs from '../components/WeaponMountTabs';
 import WeaponSelectionModal from '../components/WeaponSelectionModal';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useBannerTemplates } from '../hooks/useBannerTemplates';
@@ -44,7 +43,6 @@ export default function UnitEditScreen({
   const [isBannerUpgradePickerOpen, setIsBannerUpgradePickerOpen] = useState(false);
   const [bannerWeaponSlotPicking, setBannerWeaponSlotPicking] = useState<number | null>(null);
   const [selectedMount, setSelectedMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
-  const [weaponSheetMount, setWeaponSheetMount] = useState<'leftWeapon' | 'rightWeapon' | 'carapaceWeapon' | null>(null);
   const [nameDraft, setNameDraft] = useState('');
 
   const unit = state.units.find((u) => u.id === unitId);
@@ -271,33 +269,17 @@ export default function UnitEditScreen({
     </>
   );
 
-  const openWeaponModal = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
+  const handleOpenWeaponSelection = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
     setSelectedMount(mount);
     setWeaponModalVisible(true);
   };
 
-  const handleMountPress = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
+  const handleToggleDisabled = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
     if (!unit) return;
-    if (unit[mount]) {
-      setWeaponSheetMount(mount);
-    } else {
-      openWeaponModal(mount);
-    }
-  };
-
-  const handleToggleFromSheet = () => {
-    if (!weaponSheetMount || !unit) return;
-    const weapon = unit[weaponSheetMount];
+    const weapon = unit[mount];
     if (!weapon) return;
     const nextStatus = weapon.status === 'disabled' ? 'ready' : 'disabled';
-    updateWeapon(unitId, weaponSheetMount, { ...weapon, status: nextStatus });
-    setWeaponSheetMount(null);
-  };
-
-  const handleChangeFromSheet = () => {
-    const mount = weaponSheetMount;
-    setWeaponSheetMount(null);
-    if (mount) openWeaponModal(mount);
+    updateWeapon(unitId, mount, { ...weapon, status: nextStatus });
   };
 
   const addUpgradeToBanner = (upgradeId: string) => {
@@ -488,18 +470,15 @@ export default function UnitEditScreen({
         </View>
 
       {/* Weapon Mounts */}
-      <View style={styles.weaponSection}>
-        <View style={styles.weaponRow}>
-          {weaponMounts.map((m) => (
-            <WeaponMount
-              key={m.key}
-              label={m.label}
-              weapon={m.weapon}
-              onPress={() => handleMountPress(m.key)}
-            />
-          ))}
+      {weaponMounts.length > 0 && (
+        <View style={styles.weaponSection}>
+          <WeaponMountTabs
+            mounts={weaponMounts}
+            onChangeWeapon={handleOpenWeaponSelection}
+            onToggleDisabled={handleToggleDisabled}
+          />
         </View>
-      </View>
+      )}
 
         {/* Banner: Wargear & Upgrades */}
         {unit.unitType === 'banner' && (
@@ -692,18 +671,7 @@ export default function UnitEditScreen({
           />
         )}
 
-        {/* Weapon Bottom Sheet — outside ScrollView so it's constrained to ScreenWrapper */}
-        {weaponSheetMount && unit?.[weaponSheetMount] && (
-          <WeaponBottomSheet
-            visible={!!weaponSheetMount}
-            mountLabel={weaponMounts.find((m) => m.key === weaponSheetMount)?.label ?? ''}
-            weapon={unit[weaponSheetMount]!}
-            onClose={() => setWeaponSheetMount(null)}
-            onChangeWeapon={handleChangeFromSheet}
-            onToggleDisabled={handleToggleFromSheet}
-          />
-        )}
-        </View>
+</View>
     </SafeAreaView>
     </ScreenWrapper>
   );
@@ -901,13 +869,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   weaponSection: {
-    backgroundColor: 'rgba(0, 152, 33, 0.15)',
-    padding: 16,
     marginTop: spacing.lg,
-  },
-  weaponRow: {
-    flexDirection: 'row',
-    gap: 8,
   },
   errorText: {
     color: colors.text,
