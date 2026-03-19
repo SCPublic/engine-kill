@@ -82,6 +82,28 @@ export default function WeaponMountTabs({ mounts, onChangeWeapon, onToggleDisabl
               <Text style={styles.weaponPoints}>{weapon.points} Points</Text>
             </View>
 
+            {/* Repair alert — shown only when weapon is disabled */}
+            {isDisabled && (weapon.repairRoll || (weapon.disabledRollLines && weapon.disabledRollLines.length > 0)) && (
+              <View style={styles.repairAlert}>
+                <View style={styles.repairAlertAccent} />
+                <View style={styles.repairAlertBody}>
+                  {weapon.repairRoll && (
+                    <View style={styles.repairRollRow}>
+                      <Text style={styles.repairLabel}>⚠ WEAPON DISABLED</Text>
+                      <Text style={styles.repairRollValue}>Repair {weapon.repairRoll}</Text>
+                    </View>
+                  )}
+                  {weapon.disabledRollLines && weapon.disabledRollLines.length > 0 && (
+                    <View style={styles.repairRollTableBlock}>
+                      {weapon.disabledRollLines.map((line, idx) => (
+                        <Text key={idx} style={styles.repairTableLine}>{line}</Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
             {/* Range table */}
             <View style={styles.rangeBlock}>
               <View style={styles.rangeDivider} />
@@ -165,11 +187,11 @@ export default function WeaponMountTabs({ mounts, onChangeWeapon, onToggleDisabl
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.disableButton]}
+                  style={[styles.actionButton, styles.disableButton, isDisabled && styles.disableButtonActive]}
                   onPress={() => onToggleDisabled(selectedMount.key)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.disableButtonText}>
+                  <Text style={[styles.disableButtonText, isDisabled && styles.disableButtonTextActive]}>
                     {isDisabled ? 'REPAIR' : 'DISABLE'}
                   </Text>
                 </TouchableOpacity>
@@ -425,6 +447,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'RobotoMono_400Regular',
     letterSpacing: 0.5,
+  },
+
+  // ── Repair alert (shown under title when disabled) ────────────────────────
+  repairAlert: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 106, 0, 0.1)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 106, 0, 0.35)',
+    overflow: 'hidden',
+  },
+  repairAlertAccent: {
+    width: 4,
+    backgroundColor: '#ff6a00',
+  },
+  repairAlertBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  repairRollRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  repairLabel: {
+    color: '#ff9d5c',
+    fontSize: 11,
+    fontFamily: 'RobotoMono_700Bold',
+    letterSpacing: 0.8,
+  },
+  repairRollValue: {
+    color: '#ffcfa0',
+    fontSize: 12,
+    fontFamily: 'RobotoMono_700Bold',
+    letterSpacing: 0.5,
+  },
+  repairRollTableBlock: {
+    gap: 1,
+  },
+  repairTableLine: {
+    color: 'rgba(255, 207, 160, 0.75)',
+    fontSize: 11,
+    fontFamily: 'RobotoMono_400Regular',
+    lineHeight: 15,
+  },
+  disableButtonActive: {
+    backgroundColor: 'rgba(255, 106, 0, 0.15)',
+    borderColor: '#ff6a00',
+  },
+  disableButtonTextActive: {
+    color: '#ff9d5c',
   },
 
   // ── Empty state ───────────────────────────────────────────────────────────
