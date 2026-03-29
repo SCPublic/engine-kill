@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+**Data, titan-data, audit:** Start with **[`docs/AGENT_DATA_CONTEXT.md`](docs/AGENT_DATA_CONTEXT.md)** for a single onboarding doc (links to **[`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md)** for full audit detail).
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. For senior staff-level PWA engineering standards (architecture, performance, accessibility, responsive/offline), see `.cursor/rules/engineering-standards.mdc`.
 
 ## Project Overview
@@ -37,7 +39,7 @@ From the Expo dev server: press `w` for web, `i` for iOS simulator, `a` for Andr
 - The context handles data migration for legacy units on load
 
 ### Data Flow
-1. All template data (titans, banners, maniples, legions, upgrades, princeps traits) is loaded from titan-data’s single file `engine-kill/generated/templates.json` via `templatesLoader` and `battleScribeCache`. No override files or BattleScribe XML are fetched at runtime.
+1. All template data (titans, banners, maniples, legions, upgrades, princeps traits) is loaded from titan-data’s single file **`templates.json` at the repo root** (`{baseUrl}templates.json`) via `templatesLoader` and `templatesCache`. No other JSON or XML is fetched at runtime. Edit that file in titan-data to change reference data (see titan-data `ENGINE_KILL_TEMPLATES.md`).
 2. `unitService` creates Unit instances from templates with default values
 3. `storageService` handles AsyncStorage persistence with boolean sanitization
 4. Context provides update functions that dispatch actions and save to storage

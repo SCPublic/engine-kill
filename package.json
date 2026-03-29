@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "sync-weapon-metadata": "tsx scripts/sync-weapon-metadata.ts",
-    "generate-templates": "npx tsx scripts/generate-templates.ts",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

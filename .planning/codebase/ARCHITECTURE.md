@@ -42,22 +42,19 @@
 - Key files:
   - `unitService.ts` — unit creation from templates, damage/heat/weapon update helpers (pure, returns new Unit)
   - `storageService.ts` — AsyncStorage read/write with boolean sanitization and defensive parsing
-  - `battleScribeCache.ts` — singleton module-level cache for all remote template loads (titans, maniples, legions, upgrades, princeps traits)
-  - `titanDataOverrides.ts` — fetches chassis overrides, damage tracks, weapon metadata, and critical effects from the titan-data GitHub repo
+  - `templatesCache.ts` — singleton cache: one fetch of `templates.json`, slices for titans, banners, maniples, legions, upgrades, princeps traits
+  - `templatesLoader.ts` — fetches and validates **`templates.json`** at titan-data repo root
+  - `titanDataOverrides.ts` — not imported by app runtime; used only if adapter is run as standalone tooling
 - Depends on: models, AsyncStorage, fetch API
-- Used by: `GameContext` (storageService, unitService), hooks (battleScribeCache via adapter)
+- Used by: `GameContext` (storageService, unitService), template hooks
 
-**Adapter Layer:**
-- Purpose: Parse external BattleScribe XML + apply titan-data JSON overrides into typed `UnitTemplate` / `ManipleTemplate` objects
+**Adapter (build-time only):**
+- Purpose: Legacy BattleScribe XML parsing (not used by app runtime); titan-data **`templates.json`** is edited directly
 - Location: `src/adapters/battlescribe/`
-- Key files:
-  - `battlescribeAdapter.ts` — entry point for all template loading functions
-  - `xml.ts` — XML parsing helpers
-- Depends on: `titanDataOverrides.ts`, `UnitTemplate`, `ManipleTemplate`, `constants.ts`
-- Used by: `battleScribeCache.ts`
+- Not imported by app runtime hooks or screens.
 
 **Hook Layer:**
-- Purpose: React hooks that wrap `battleScribeCache` to deliver remote templates to components with loading state
+- Purpose: React hooks that wrap `templatesCache` to deliver remote templates to components with loading state
 - Location: `src/hooks/`
 - Key files:
   - `useTitanTemplates.ts` — titans with filtering (legend, playable, excluded variants)
@@ -66,7 +63,7 @@
   - `useUpgradeTemplates.ts` — wargear upgrade templates
   - `usePrincepsTraitTemplates.ts` — princeps trait options
   - `useBreakpoint.ts` — responsive layout helper (`sm`/`md`/`lg`)
-- Depends on: `battleScribeCache`, model types
+- Depends on: `templatesCache`, model types
 - Used by: Screens (`HomeScreen`, `UnitEditScreen`, `BattlegroupListScreen`)
 
 **Screen Layer:**
@@ -137,12 +134,11 @@
 
 **Template Loading:**
 
-1. Hooks (e.g., `useTitanTemplates`) call `battleScribeCache.loadTitansOnce()` on mount
-2. Cache checks module-level `CacheEntry` — if idle, starts fetch via `battlescribeAdapter`
-3. Adapter fetches BattleScribe `.gst` XML from `titan-data` GitHub repo, parses XML, then calls `loadTitanDataOverrides` to fetch chassis/damage/weapon override JSON
-4. Adapter merges overrides into `UnitTemplate[]` and returns
-5. Cache stores result; subsequent hook mounts return immediately from cache (no re-fetch on remount)
-6. Hook exposes filtered views: `titanTemplates`, `titanTemplatesNonLegend`, `titanTemplatesPlayable`
+1. Hooks (e.g., `useTitanTemplates`) call `templatesCache.loadTitansOnce()` on mount
+2. Cache checks module-level payload entry — if idle, `templatesLoader.loadTemplatesFromJson` fetches `templates.json` from titan-data root once
+3. Cache stores parsed payload; titans/banners/maniples/etc. are slices of the same object
+4. Subsequent hook mounts return immediately from cache (single shared fetch)
+5. Hook exposes filtered views: `titanTemplates`, `titanTemplatesNonLegend`, `titanTemplatesPlayable`
 
 **Unit Mutation:**
 
@@ -169,7 +165,7 @@
 **UnitTemplate:**
 - Purpose: Static definition of a titan/banner chassis including default stats and available weapons
 - Examples: `src/models/UnitTemplate.ts`
-- Pattern: Loaded from remote BattleScribe XML at runtime; local static fallback in `src/data/bannerTemplates.ts`
+- Pattern: Loaded from `templates.json` at runtime; local helpers in `src/data/bannerTemplates.ts` where needed
 
 **Battlegroup:**
 - Purpose: Named roster container for units and maniples with allegiance (loyalist/traitor)
@@ -181,9 +177,9 @@
 - Examples: `src/models/Maniple.ts`
 - Pattern: Contains `titanUnitIds: string[]`; one titan may belong to only one maniple (enforced in context)
 
-**BattleScribeCache:**
+**templatesCache:**
 - Purpose: Singleton in-memory cache preventing duplicate network fetches across component remounts
-- Examples: `src/services/battleScribeCache.ts`
+- Examples: `src/services/templatesCache.ts`
 - Pattern: Module-level `CacheEntry<T>` objects with `status` ('idle'|'loading'|'loaded'|'error') and deduplication via shared Promise
 
 ## Entry Points
@@ -211,7 +207,7 @@
 - `ErrorBoundary` class component wraps the entire app in `App.tsx`; renders a plain error message on uncaught render errors
 - All `storageService` methods have `try/catch` blocks returning empty arrays or `null` on failure
 - `GameProvider` initialization wrapped in `try/finally` to ensure `isLoading` is always set to `false`
-- `battleScribeCache` sets `status: 'error'` on failed loads; hooks display empty state rather than crashing
+- `templatesCache` surfaces fetch errors; hooks display empty state rather than crashing
 - Boolean sanitization (`parseBooleanLike`, `parseIsLocal`) applied on every AsyncStorage load to guard against data corruption
 
 ## Cross-Cutting Concerns

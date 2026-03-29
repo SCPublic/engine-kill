@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 /**
  * templates.json source for E2E (route = respond with file from disk, no network):
- * - TITAN_DATA_PATH set: path to titan-data repo (we use engine-kill/generated/templates.json)
+ * - TITAN_DATA_PATH set: path to titan-data repo (uses templates.json at repo root)
  *   or a path ending in templates.json. We read that file and fulfill the request with it.
  * - Otherwise: default to sibling repo ../titan-data (from engine-kill root). If that file
  *   exists, use it. If not, fall back to minimal fixture so tests still pass without titan-data.
@@ -20,11 +20,11 @@ function getTemplatesJsonPath(): string {
   if (envPath) {
     return envPath.endsWith('templates.json')
       ? path.resolve(envPath)
-      : path.join(path.resolve(envPath), 'engine-kill', 'generated', 'templates.json');
+      : path.join(path.resolve(envPath), 'templates.json');
   }
   const engineKillRoot = path.join(__dirname, '..');
   const siblingTitanData = path.join(engineKillRoot, '..', 'titan-data');
-  return path.join(siblingTitanData, 'engine-kill', 'generated', 'templates.json');
+  return path.join(siblingTitanData, 'templates.json');
 }
 
 test.describe('Titan data displayed on screen', () => {

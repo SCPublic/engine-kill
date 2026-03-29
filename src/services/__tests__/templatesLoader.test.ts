@@ -1,6 +1,6 @@
 /**
  * Tests for the single templates loader (REFACTOR_PROGRESS: single source, accurate data).
- * See docs/TESTING_REFACTOR_PROGRESS.md.
+ * See docs/TESTING_TEMPLATES.md.
  */
 
 import * as fs from 'fs';
@@ -21,14 +21,14 @@ describe('loadTemplatesFromJson', () => {
     global.fetch = originalFetch;
   });
 
-  it('builds URL as {baseUrl}/engine-kill/generated/templates.json with trailing slash', async () => {
+  it('builds URL as {baseUrl}/templates.json with trailing slash', async () => {
     let capturedUrl = '';
     global.fetch = async (input: RequestInfo | URL) => {
       capturedUrl = typeof input === 'string' ? input : input.toString();
       return { ok: true, json: async () => ({ titans: [] }) } as Response;
     };
     await loadTemplatesFromJson('https://example.com/');
-    expect(capturedUrl).toBe('https://example.com/engine-kill/generated/templates.json');
+    expect(capturedUrl).toBe('https://example.com/templates.json');
   });
 
   it('builds URL without double slash when baseUrl has no trailing slash', async () => {
@@ -38,13 +38,13 @@ describe('loadTemplatesFromJson', () => {
       return { ok: true, json: async () => ({ titans: [] }) } as Response;
     };
     await loadTemplatesFromJson('https://example.com');
-    expect(capturedUrl).toBe('https://example.com/engine-kill/generated/templates.json');
+    expect(capturedUrl).toBe('https://example.com/templates.json');
   });
 
   it('throws on fetch failure with status and URL in message', async () => {
     global.fetch = async () => ({ ok: false, status: 404, statusText: 'Not Found' } as Response);
     await expect(loadTemplatesFromJson('https://example.com')).rejects.toThrow(
-      /Failed to load templates: 404.*engine-kill\/generated\/templates\.json/
+      /Failed to load templates: 404.*templates\.json/
     );
   });
 

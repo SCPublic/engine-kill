@@ -1,13 +1,11 @@
 /**
- * Behavioral tests for the template cache (single-fetch templates.json).
- * REFACTOR_PROGRESS step 6: after renaming battleScribeCache → templatesCache,
- * these tests ensure the cache still loads and returns the shape the app needs.
- * If the rename breaks the cache or its wiring to the loader, these tests fail.
+ * Behavioral tests for templatesCache (single-fetch templates.json).
+ * Guards loadTitansOnce, loadBannersOnce, payload shape, and single shared fetch.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { battleScribeCache } from '../battleScribeCache';
+import { templatesCache } from '../templatesCache';
 
 const FIXTURE_PATH = path.join(__dirname, '../../__fixtures__/templates-minimal.json');
 
@@ -20,7 +18,7 @@ describe('Template cache (load and shape)', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    battleScribeCache.resetAll();
+    templatesCache.resetAll();
   });
 
   afterEach(() => {
@@ -31,7 +29,7 @@ describe('Template cache (load and shape)', () => {
     const fixture = readFixture();
     global.fetch = async () => ({ ok: true, json: async () => fixture } as Response);
 
-    const result = await battleScribeCache.loadTitansOnce();
+    const result = await templatesCache.loadTitansOnce();
 
     expect(result).toHaveProperty('templates');
     expect(result).toHaveProperty('warnings');
@@ -51,7 +49,7 @@ describe('Template cache (load and shape)', () => {
     const fixture = readFixture();
     global.fetch = async () => ({ ok: true, json: async () => fixture } as Response);
 
-    const result = await battleScribeCache.loadBannersOnce();
+    const result = await templatesCache.loadBannersOnce();
 
     expect(result).toHaveProperty('templates');
     expect(result).toHaveProperty('warnings');
@@ -68,7 +66,7 @@ describe('Template cache (load and shape)', () => {
     const fixture = readFixture();
     global.fetch = async () => ({ ok: true, json: async () => fixture } as Response);
 
-    const result = await battleScribeCache.loadTemplatesPayloadOnce();
+    const result = await templatesCache.loadTemplatesPayloadOnce();
 
     expect(result).toHaveProperty('titans');
     expect(result).toHaveProperty('banners');
@@ -85,12 +83,12 @@ describe('Template cache (load and shape)', () => {
     const fixture = readFixture();
     global.fetch = async () => ({ ok: true, json: async () => fixture } as Response);
 
-    const before = battleScribeCache.getTitanResultSnapshot();
+    const before = templatesCache.getTitanResultSnapshot();
     expect(before.status === 'idle' || before.status === 'loading').toBe(true);
 
-    await battleScribeCache.loadTitansOnce();
+    await templatesCache.loadTitansOnce();
 
-    const after = battleScribeCache.getTitanResultSnapshot();
+    const after = templatesCache.getTitanResultSnapshot();
     expect(after.status).toBe('loaded');
     expect(after.result).toBeDefined();
     expect(after.result?.templates.length).toBeGreaterThan(0);
@@ -104,8 +102,8 @@ describe('Template cache (load and shape)', () => {
       return { ok: true, json: async () => fixture } as Response;
     };
 
-    await battleScribeCache.loadTitansOnce();
-    await battleScribeCache.loadBannersOnce();
+    await templatesCache.loadTitansOnce();
+    await templatesCache.loadBannersOnce();
 
     expect(fetchCount).toBe(1);
   });

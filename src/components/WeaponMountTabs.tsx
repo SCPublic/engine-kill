@@ -14,6 +14,8 @@ interface WeaponMountTabsProps {
   mounts: WeaponMountItem[];
   onChangeWeapon: (mount: MountKey) => void;
   onToggleDisabled: (mount: MountKey) => void;
+  /** Override tab panel button (e.g. banners use "EDIT BANNER LOADOUT"). */
+  changeWeaponLabel?: string;
 }
 
 const fmtRange = (v: number | string | undefined | null): string => {
@@ -27,7 +29,12 @@ const fmtRange = (v: number | string | undefined | null): string => {
   return t;
 };
 
-export default function WeaponMountTabs({ mounts, onChangeWeapon, onToggleDisabled }: WeaponMountTabsProps) {
+export default function WeaponMountTabs({
+  mounts,
+  onChangeWeapon,
+  onToggleDisabled,
+  changeWeaponLabel = 'CHANGE WEAPON',
+}: WeaponMountTabsProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   if (!mounts.length) return null;
@@ -201,7 +208,7 @@ export default function WeaponMountTabs({ mounts, onChangeWeapon, onToggleDisabl
                 onPress={() => onChangeWeapon(selectedMount.key)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.changeButtonText}>CHANGE WEAPON</Text>
+                <Text style={styles.changeButtonText}>{changeWeaponLabel}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -215,7 +222,7 @@ export default function WeaponMountTabs({ mounts, onChangeWeapon, onToggleDisabl
                 onPress={() => onChangeWeapon(selectedMount.key)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.addButtonText}>ADD WEAPON</Text>
+                <Text style={styles.addButtonText}>{changeWeaponLabel}</Text>
               </TouchableOpacity>
             </View>
           </View>

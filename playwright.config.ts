@@ -11,7 +11,7 @@ const E2E_BASE_URL =
  * Tests can run concurrently: each has its own browser context (isolated storage).
  *
  * Titan data for tests (route = respond from disk):
- * - TITAN_DATA_PATH: path to titan-data repo or to engine-kill/generated/templates.json.
+ * - TITAN_DATA_PATH: path to titan-data repo or to templates.json file.
  *   Default: sibling repo ../titan-data. If the file exists, we fulfill templates.json with it.
  * - Unset or missing file: fall back to minimal fixture in src/__fixtures__/templates-minimal.json.
  * - E2E_USE_REMOTE_DATA=1: do not stub; app fetches from its configured URL (e.g. GitHub in CI).

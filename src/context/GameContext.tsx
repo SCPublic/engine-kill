@@ -315,7 +315,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
             if (!Array.isArray(unit.bannerWeaponIds)) {
               unit.bannerWeaponIds = [];
               needsUpdate = true;
-            } else if (unit.bannerWeaponIds.length > 2 * k) {
+            } else if (
+              unit.bannerWeaponIds.length > 2 * k &&
+              unit.bannerWeaponIds.length !== 3 * k
+            ) {
               unit.bannerWeaponIds = unit.bannerWeaponIds.slice(0, 2 * k);
               needsUpdate = true;
             }
@@ -560,7 +563,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (manipleTemplate) {
       // Enforce allowed chassis for this maniple.
       if (!manipleTemplate.allowedTitanTemplateIds.includes(template.id)) return;
-      // If BattleScribe parsing didn’t yield a max (0), treat as “unknown” and don’t cap.
+      // If template data didn’t yield a max (0), treat as “unknown” and don’t cap.
       if (manipleTemplate.maxTitans > 0 && maniple.titanUnitIds.length >= manipleTemplate.maxTitans) return;
     }
 
@@ -772,7 +775,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const template = manipleTemplates.find((t) => t.id === maniple.templateId);
     if (template && !template.allowedTitanTemplateIds.includes(unit.templateId)) return;
-    // If BattleScribe parsing didn’t yield a max (0), treat as “unknown” and don’t cap.
+    // If template data didn’t yield a max (0), treat as “unknown” and don’t cap.
     if (template && template.maxTitans > 0 && maniple.titanUnitIds.length >= template.maxTitans) return;
 
     // Enforce one-maniple-per-titan: remove from any other maniple first.

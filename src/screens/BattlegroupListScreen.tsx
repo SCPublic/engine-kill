@@ -7,6 +7,8 @@ import { colors, radius, spacing, terminal } from '../theme/tokens';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { Battlegroup, BattlegroupAllegiance } from '../models/Battlegroup';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
+import { useBannerTemplates } from '../hooks/useBannerTemplates';
+import { getUnitTotalPoints } from '../utils/unitPoints';
 import {
   TITAN_DATA_REPO_SLUG,
   TITAN_DATA_GITHUB_URL,
@@ -37,6 +39,7 @@ const allegianceButtons: { value: BattlegroupAllegiance; label: string; checkedC
 export default function BattlegroupListScreen() {
   const { state, createBattlegroup, updateBattlegroup, deleteBattlegroupById, setActiveBattlegroupId } = useGame();
   const { titanTemplatesPlayable } = useTitanTemplates();
+  const { bannerTemplates } = useBannerTemplates();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createAllegiance, setCreateAllegiance] = useState<BattlegroupAllegiance>('loyalist');
@@ -97,15 +100,11 @@ export default function BattlegroupListScreen() {
   };
 
   const getBattlegroupPoints = (battlegroupId: string): number => {
-    // Titans only for now; banners can be added later when we have points for them.
-    const units = state.units.filter((u) => u.battlegroupId === battlegroupId && u.unitType === 'titan');
-    return units.reduce((sum, u) => {
-      const tpl = titanTemplatesPlayable.find((t) => t.id === u.templateId);
-      const base = tpl?.basePoints ?? 0;
-      const weapons = (u.leftWeapon?.points ?? 0) + (u.rightWeapon?.points ?? 0) + (u.carapaceWeapon?.points ?? 0);
-      const upgrades = (u.upgrades ?? []).reduce((s, x) => s + (x.points ?? 0), 0);
-      return sum + base + weapons + upgrades;
-    }, 0);
+    const units = state.units.filter((u) => u.battlegroupId === battlegroupId);
+    return units.reduce(
+      (sum, u) => sum + getUnitTotalPoints(u, titanTemplatesPlayable, bannerTemplates),
+      0
+    );
   };
 
   const openRename = (battlegroup: Battlegroup) => {

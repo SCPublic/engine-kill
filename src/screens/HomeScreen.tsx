@@ -33,6 +33,8 @@ import { useManipleTemplates } from '../hooks/useManipleTemplates';
 import { useLegionTemplates } from '../hooks/useLegionTemplates';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { usePrincepsTraitTemplates } from '../hooks/usePrincepsTraitTemplates';
+import { bannerArmWeaponIdsForKnightCount, bannerWeaponsPerKnight } from '../services/unitService';
+import { getBannerTotalPoints as getBannerTotalPointsUtil, getTitanTotalPoints as getTitanTotalPointsUtil } from '../utils/unitPoints';
 import ScreenWrapper from '../components/ScreenWrapper';
 import StatsPanel from '../components/StatsPanel';
 
@@ -113,39 +115,8 @@ export default function HomeScreen({
     else console.log('Unit pressed:', unit.id);
   };
 
-  const getTitanTotalPoints = (unit: Unit): number => {
-    if (unit.unitType !== 'titan') return 0;
-    const tpl = titanTemplatesPlayable.find((t) => t.id === unit.templateId);
-    const base = tpl?.basePoints ?? 0;
-    const weapons =
-      (unit.leftWeapon?.points ?? 0) +
-      (unit.rightWeapon?.points ?? 0) +
-      (unit.carapaceWeapon?.points ?? 0);
-    const upgrades = (unit.upgrades ?? []).reduce((sum, u) => sum + (u.points ?? 0), 0);
-    return base + weapons + upgrades;
-  };
-
-  const getBannerTotalPoints = (unit: Unit): number => {
-    if (unit.unitType !== 'banner') return 0;
-    const template = bannerTemplates.find((t) => t.id === unit.templateId);
-    if (!template) return 0;
-    const minK = template.minKnights ?? 3;
-    const maxK = template.maxKnights ?? 6;
-    const basePts = template.bannerBasePoints ?? 120;
-    const ptsPerKnight = template.bannerPointsPerKnight ?? 35;
-    const K = Math.min(maxK, Math.max(minK, unit.bannerKnightCount ?? minK));
-    const effectiveWeapons = template.availableWeapons ?? [];
-    const weaponIds = unit.bannerWeaponIds ?? [];
-    const weaponPts = weaponIds.reduce(
-      (sum, id) => sum + (effectiveWeapons.find((w) => w.id === id)?.points ?? 0),
-      0
-    );
-    const meltagun = Math.min(K, Math.max(0, unit.bannerMeltagunCount ?? 0));
-    const stormspear = Math.min(K, Math.max(0, unit.bannerStormspearCount ?? 0));
-    const meltagunPts = (effectiveWeapons.find((w) => w.id === 'meltaguns')?.points ?? 5) * meltagun;
-    const stormspearPts = (effectiveWeapons.find((w) => w.id === 'stormspear-rocket-pod')?.points ?? 5) * stormspear;
-    return basePts + (K - minK) * ptsPerKnight + weaponPts + meltagunPts + stormspearPts;
-  };
+  const getTitanTotalPoints = (unit: Unit) => getTitanTotalPointsUtil(unit, titanTemplatesPlayable);
+  const getBannerTotalPoints = (unit: Unit) => getBannerTotalPointsUtil(unit, bannerTemplates);
 
   const getBannerWeaponsSummary = (unit: Unit): string => {
     if (unit.unitType !== 'banner') return '';
@@ -186,7 +157,7 @@ export default function HomeScreen({
     await duplicateTitan(unitId);
   };
 
-  const handleReloadBattleScribe = () => {
+  const handleReloadTemplates = () => {
     reloadManiples();
     reloadTitans();
     reloadLegions();
@@ -194,7 +165,7 @@ export default function HomeScreen({
     reloadTraits();
   };
 
-  const isBattleScribeLoading =
+  const isTemplatesLoading =
     isManiplesLoading || isTitansLoading || isLegionsLoading || isUpgradesLoading || isTraitsLoading;
 
   const handleDeleteManiple = (maniple: Maniple) => {
@@ -233,13 +204,13 @@ export default function HomeScreen({
     [activeBattlegroupId, state.units]
   );
 
-  // Legions and maniples filtered by battlegroup allegiance (only show those that explicitly match).
+  // Legions filtered by battlegroup allegiance (only show those that explicitly match).
   const legionsForBattlegroup = useMemo(() => {
     const alg = activeBattlegroup?.allegiance;
     if (!alg) return legionTemplates;
     return legionTemplates.filter((l) => l.allegiance === alg);
   }, [legionTemplates, activeBattlegroup?.allegiance]);
-  // Maniples: show all. Allegiance on maniples reflects source publication (e.g. Titandeath, Loyalist Legios), not a hard restriction—maniples are generally available to both sides in AT.
+  // Maniple templates are not restricted by battlegroup allegiance in AT (core formations are available to both sides).
   const maniplesForBattlegroup = useMemo(() => manipleTemplates, [manipleTemplates]);
 
   const manageManiple = manageManipleId ? battlegroupManiples.find((m) => m.id === manageManipleId) : undefined;
@@ -310,7 +281,7 @@ export default function HomeScreen({
   const PRINCEPS_SENIORES_RULES = princepsTemplate?.rules?.length
     ? princepsTemplate.rules
     : [
-        'Princeps Seniores: (BattleScribe rules unavailable)',
+        'Princeps Seniores: (rules unavailable)',
         'Restriction: Only one Princeps Seniores per maniple.',
       ];
 
@@ -416,12 +387,12 @@ export default function HomeScreen({
                   <IconButton
                     icon="refresh"
                     size={16}
-                    style={[styles.reloadButton, isBattleScribeLoading ? { opacity: 0 } : null]}
-                    disabled={isBattleScribeLoading}
-                    onPress={handleReloadBattleScribe}
-                    accessibilityLabel="Reload BattleScribe data"
+                    style={[styles.reloadButton, isTemplatesLoading ? { opacity: 0 } : null]}
+                    disabled={isTemplatesLoading}
+                    onPress={handleReloadTemplates}
+                    accessibilityLabel="Reload template data"
                   />
-                  {isBattleScribeLoading ? (
+                  {isTemplatesLoading ? (
                     <View style={styles.reloadSpinner}>
                       <ActivityIndicator size={14} />
                     </View>
@@ -1107,13 +1078,11 @@ export default function HomeScreen({
           <View style={styles.templateListContainer}>
             {isManiplesLoading ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
-                Loading maniples from BattleScribe…
+                Loading maniples…
               </Text>
             ) : maniplesForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.sectionEmpty}>
-                {manipleTemplates.length === 0
-                  ? 'No maniples found in BattleScribe data.'
-                  : "No maniples match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
+                No maniple templates loaded.
               </Text>
             ) : (
               <FlatList<ManipleTemplate>
@@ -1261,13 +1230,11 @@ export default function HomeScreen({
           <View style={styles.templateListContainer}>
             {isManiplesLoading ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                Loading maniples from BattleScribe…
+                Loading maniples…
               </Text>
             ) : maniplesForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                {manipleTemplates.length === 0
-                  ? 'No maniples found in BattleScribe data.'
-                  : "No maniples match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
+                No maniple templates loaded.
               </Text>
             ) : (
               <FlatList<ManipleTemplate>
@@ -1316,12 +1283,12 @@ export default function HomeScreen({
           <View style={styles.templateListContainer}>
             {isLegionsLoading ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                Loading legions from BattleScribe…
+                Loading legions…
               </Text>
             ) : legionsForBattlegroup.length === 0 ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
                 {legionTemplates.length === 0
-                  ? 'No legions found in BattleScribe data.'
+                  ? 'No legions found.'
                   : "No legions match this battlegroup's allegiance. Set battlegroup allegiance (Loyalist/Traitor) on the battlegroup."}
               </Text>
             ) : (
@@ -1414,10 +1381,11 @@ export default function HomeScreen({
               const armWeapons = effectiveWeapons.filter((w) => w.mountType === 'arm' && w.id !== 'meltaguns');
               const meltagun = Math.min(K, Math.max(0, selectedUnit.bannerMeltagunCount ?? 0));
               const stormspear = Math.min(K, Math.max(0, selectedUnit.bannerStormspearCount ?? 0));
-              const requiredTotal = 2 * K;
+              const wpnPerKnight = bannerWeaponsPerKnight(template);
+              const requiredTotal = wpnPerKnight * K;
               const setKnightCount = (newK: number) => {
                 const n = Math.min(maxK, Math.max(minK, newK));
-                const nextIds = weaponIds.slice(0, 2 * n);
+                const nextIds = bannerArmWeaponIdsForKnightCount(template, weaponIds, n);
                 void updateUnit({
                   ...selectedUnit,
                   bannerKnightCount: n,
@@ -1463,7 +1431,19 @@ export default function HomeScreen({
                         Total is {armWeaponTotal}; need {requiredTotal}.
                       </Text>
                     )}
-                    {armWeapons.map((w) => {
+                    {(() => {
+                      const fixedIds = template.fixedBannerArmWeaponIds;
+                      if (fixedIds && fixedIds.length >= 2) {
+                        const names = fixedIds.map(
+                          (id) => template.availableWeapons.find((w) => w.id === id)?.name ?? '—'
+                        );
+                        return (
+                      <Text variant="bodySmall" style={[styles.editTextMuted, { marginTop: spacing.xs }]}>
+                        Fixed loadout per model: {names.join('; ')}.
+                      </Text>
+                        );
+                      }
+                      return armWeapons.map((w) => {
                       const count = weaponIds.filter((id) => id === w.id).length;
                       return (
                         <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
@@ -1473,7 +1453,8 @@ export default function HomeScreen({
                           <IconButton icon="plus" size={20} iconColor={terminal.textPrimary} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
                         </View>
                       );
-                    })}
+                    });
+                    })()}
                   </View>
                   <View style={{ marginTop: spacing.md }}>
                     <Text variant="bodySmall" style={styles.editSectionTitle}>Meltaguns</Text>
@@ -1635,17 +1616,18 @@ export default function HomeScreen({
           <View style={styles.templateListContainer}>
             {isTraitsLoading ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                Loading traits from BattleScribe…
+                Loading traits…
               </Text>
             ) : princepsTraitTemplates.length === 0 ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                No personal traits found in BattleScribe data.
+                No personal traits found.
               </Text>
             ) : (
               (() => {
-                // BSData personal trait tables are keyed to the Legio selectionEntry id (not the Legio categoryEntry id).
+                // BS personal trait tables use the Legio force `selectionEntry` id (`legioCategoryId`), not `legions[].categoryId`.
                 const legioSelectionEntryId =
-                  selectedTitanLegion?.id?.startsWith('bslegio:') ? selectedTitanLegion.id.slice('bslegio:'.length) : null;
+                  selectedTitanLegion?.princepsLegioSelectionEntryId ??
+                  (selectedTitanLegion?.id?.startsWith('bslegio:') ? selectedTitanLegion.id.slice('bslegio:'.length) : null);
                 const standard = princepsTraitTemplates.filter((t) => t.traitGroup === 'standard');
                 const legionSpecific = legioSelectionEntryId
                   ? princepsTraitTemplates.filter(
@@ -1657,7 +1639,7 @@ export default function HomeScreen({
                   if (standard.length === 0) {
                     return (
                       <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                        No standard personal traits found in BattleScribe data.
+                        No standard personal traits found.
                       </Text>
                     );
                   }
@@ -1709,18 +1691,27 @@ export default function HomeScreen({
                 if (standard.length === 0 && legionSpecific.length === 0) {
                   return (
                     <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                      No personal traits found for this legion in BattleScribe data.
+                      No personal traits found for this legion.
                     </Text>
                   );
                 }
+
+                const legionHeaderTitle = selectedTitanLegion?.name ?? 'Legion';
+                // BattleScribe has no legio-specific Personal Trait subgroup for Crusade Legio (Custom); use Standard only.
+                const legionRows =
+                  legionSpecific.length > 0
+                    ? ([
+                        { kind: 'header', title: legionHeaderTitle } as const,
+                        ...legionSpecific.map((t) => ({ kind: 'trait', t } as const)),
+                      ] as const)
+                    : [];
 
                 return (
                   <FlatList
                     data={[
                       { kind: 'header', title: 'Standard' } as const,
                       ...standard.map((t) => ({ kind: 'trait', t } as const)),
-                      { kind: 'header', title: selectedTitanLegion?.name ?? 'Legion' } as const,
-                      ...legionSpecific.map((t) => ({ kind: 'trait', t } as const)),
+                      ...legionRows,
                     ]}
                     keyExtractor={(row, idx) => (row.kind === 'trait' ? `t:${row.t.id}` : `h:${row.title}:${idx}`)}
                     style={styles.addScroll}
@@ -1776,11 +1767,11 @@ export default function HomeScreen({
           <View style={styles.templateListContainer}>
             {isUpgradesLoading ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                Loading upgrades from BattleScribe…
+                Loading upgrades…
               </Text>
             ) : upgradeTemplates.length === 0 ? (
               <Text variant="bodySmall" style={styles.editSectionEmpty}>
-                No upgrades found in BattleScribe data.
+                No upgrades found.
               </Text>
             ) : (
               <View style={{ flex: 1 }}>

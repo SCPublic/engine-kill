@@ -100,7 +100,7 @@
 
 **No Lazy Loading for BattleScribe XML:**
 - Problem: On first load, the adapter fetches and parses 3 XML files in sequence (`Battlegroup.cat`, `Household.cat`, `Adeptus Titanicus 2018.gst`) for each of 5 data types (titans, maniples, legions, upgrades, princeps traits). Parsing the same XML multiple times is redundant.
-- Files: `src/adapters/battlescribe/battlescribeAdapter.ts`, `src/services/battleScribeCache.ts`
+- Files: `src/adapters/battlescribe/battlescribeAdapter.ts`, `src/services/templatesCache.ts`
 - Cause: Each `load*FromBattleScribe` function fetches all source files independently; no shared XML parse cache.
 - Improvement path: Fetch and parse XML once; pass the parsed `XmlNode` trees to all extraction functions.
 

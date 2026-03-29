@@ -1,10 +1,21 @@
-import { Weapon } from './Unit';
-
 /** Armor roll ranges per hit type (e.g. "11-13", "14-15", "16+") from titan-data. */
 export interface ArmorRolls {
   direct: string;
   devastating: string;
   critical: string;
+}
+
+/**
+ * Ion shield matrix from BattleScribe (profile type Ion Shields): `saves` order is
+ * attack strength 1–6, 7, 8, 9, 10+. Use null for no save.
+ */
+export interface IonShieldTableRow {
+  rowLabel: string;
+  saves: (string | null)[];
+}
+
+export interface IonShieldTable {
+  rows: IonShieldTableRow[];
 }
 
 /** Level 4 used for Warmaster head (4 crit tracks; first two share same effect as level 1). UI still shows 3 pips but can display 4 effect rows. */
@@ -72,7 +83,10 @@ export interface UnitTemplate {
     stats: UnitStats;
     // Banner-only (ignored for titans)
     structurePointsMax?: number;
+    /** @deprecated Prefer ionShieldTable (BS-sourced matrix). Kept for older templates. */
     ionShieldSaves?: string[];
+    /** Knight banners: ion save by models-in-banner row × attack strength (from titan-data / BS). */
+    ionShieldTable?: IonShieldTable;
   };
   availableWeapons: WeaponTemplate[];
   /** If set, unit is created with this weapon in the left arm (from GST min=1 single-option group). */
@@ -86,5 +100,11 @@ export interface UnitTemplate {
   bannerBasePoints?: number;
   /** Banner-only: points added per knight (e.g. 35 per additional knight). */
   bannerPointsPerKnight?: number;
+  /**
+   * Banner-only: when set, every model uses this fixed list in order, repeated `bannerKnightCount` times.
+   * Length 2: [left, right] arms (e.g. Atrapos, Tenebrax). Length 3: three fixed systems per model (e.g. Asterius).
+   * `bannerWeaponIds` length = `fixedBannerArmWeaponIds.length` × `bannerKnightCount`.
+   */
+  fixedBannerArmWeaponIds?: string[];
 }
 

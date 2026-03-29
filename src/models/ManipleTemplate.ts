@@ -12,7 +12,11 @@ export interface ManipleTemplate {
   maxTitans: number;
   specialRule: string;
   description?: string;
-  /** Inferred from publication (e.g. Loyalist Legios vs Traitor Legios). Used to filter maniples by battlegroup allegiance. */
+  /**
+   * Optional metadata only. BattleScribe often encodes which book an entry came from here — that is not the same
+   * as “this maniple is only legal for loyalist/traitor battlegroups”; in AT, almost all core maniples are
+   * available to both sides. Prefer describing legio-only rules in `specialRule` until we add a dedicated field.
+   */
   allegiance?: ManipleAllegiance;
 }
 
