@@ -1,6 +1,6 @@
 /**
  * Single loader for app-ready templates from titan-data.
- * Fetches engine-kill/generated/templates.json (produced by scripts/generate-templates.ts)
+ * Fetches templates.json from the titan-data repo root
  * and returns typed titans, banners, maniples, legions, upgrades, princepsTraits, and warnings.
  * No override/merge at runtime; all template data comes from this file.
  */
@@ -28,7 +28,7 @@ export interface TemplatesPayload {
  */
 export async function loadTemplatesFromJson(baseUrl: string): Promise<TemplatesPayload> {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const url = `${base}engine-kill/generated/templates.json`;
+  const url = `${base}templates.json`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to load templates: ${res.status} ${res.statusText} (${url})`);

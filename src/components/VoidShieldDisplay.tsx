@@ -1,13 +1,21 @@
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
-import { ICON_SHIELD } from '../assets/icons';
-import PipArcGauge from './PipArcGauge';
+import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 
-const NUM_PIPS = 8;
+const INACTIVE_FILL = '#001505';
+const TEXT_COLOR = '#8BE39D';
 
-const SHIELD_CYAN = '#00e5ff';
-const SHIELD_DESTROYED = '#d32f2f';
-const INACTIVE_FILL = '#1e3524';
+// Gradient: left (index 0) = blue, right (index max-1) = red
+const GRADIENT_BLUE: [number, number, number] = [0x00, 0xe5, 0xff];
+const GRADIENT_RED: [number, number, number] = [0xd3, 0x2f, 0x2f];
+
+function getShieldColor(i: number, max: number): string {
+  if (max <= 1) return `rgb(${GRADIENT_BLUE[0]}, ${GRADIENT_BLUE[1]}, ${GRADIENT_BLUE[2]})`;
+  const t = i / (max - 1);
+  const r = Math.round(GRADIENT_BLUE[0] + t * (GRADIENT_RED[0] - GRADIENT_BLUE[0]));
+  const g = Math.round(GRADIENT_BLUE[1] + t * (GRADIENT_RED[1] - GRADIENT_BLUE[1]));
+  const b = Math.round(GRADIENT_BLUE[2] + t * (GRADIENT_RED[2] - GRADIENT_BLUE[2]));
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
 interface VoidShieldDisplayProps {
   shields?: number[];
@@ -33,89 +41,123 @@ export default function VoidShieldDisplay({
   const saveValue = safeSaves[activeIndex] || '—';
   const isDestroyed = saveValue === 'X';
 
-  const handlePress = () => {
-    if (!onShieldChange) return;
-    onShieldChange(activeIndex >= max - 1 ? 0 : activeIndex + 1);
-  };
-
-  const handleLongPress = () => {
+  const handleDecrement = () => {
     if (!onShieldChange || activeIndex <= 0) return;
     onShieldChange(activeIndex - 1);
   };
 
-  const valueColor = isDestroyed ? SHIELD_DESTROYED : SHIELD_CYAN;
-
-  const fills = Array.from({ length: NUM_PIPS }, (_, i) => {
-    if (i >= max) return INACTIVE_FILL;
-    if (i === activeIndex) return SHIELD_CYAN;
-    if (i < activeIndex) return SHIELD_DESTROYED;
-    return INACTIVE_FILL;
-  });
-
-  const glows = fills.map(f => f !== INACTIVE_FILL);
+  const handleIncrement = () => {
+    if (!onShieldChange || activeIndex >= max - 1) return;
+    onShieldChange(activeIndex + 1);
+  };
 
   return (
-    <TouchableOpacity
-      style={[styles.button, style]}
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      activeOpacity={0.7}
-      delayLongPress={400}
-    >
-      <View style={styles.labelRow}>
-        <Image source={{ uri: ICON_SHIELD }} style={styles.icon} />
-        <Text style={styles.label}>SHIELDS</Text>
+    <View style={[styles.container, style]}>
+      <View style={styles.buttonBar}>
+        <TouchableOpacity onPress={handleDecrement} style={styles.btnHit}>
+          <Text style={styles.barText}>-</Text>
+        </TouchableOpacity>
+        <Text style={styles.barText}>SHIELDS</Text>
+        <TouchableOpacity onPress={handleIncrement} style={styles.btnHit}>
+          <Text style={styles.barText}>+</Text>
+        </TouchableOpacity>
       </View>
-      <View style={styles.gaugeContainer}>
-        <PipArcGauge fills={fills} glows={glows} />
-        <Text style={[styles.saveValue, { color: valueColor }]}>
-          {isDestroyed ? '✕' : saveValue}
-        </Text>
+      <View style={styles.content}>
+        <View style={styles.valueContainer}>
+          <Text style={styles.saveValue}>
+            {isDestroyed ? '✕' : saveValue}
+          </Text>
+        </View>
+        <View style={styles.pipRow}>
+          {Array.from({ length: max }, (_, i) => {
+            const enabled = i <= activeIndex;
+            const color = getShieldColor(i, max);
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.pip,
+                  i === 0 && styles.pipFirst,
+                  i === max - 1 && styles.pipLast,
+                  enabled
+                    ? { backgroundColor: color, borderColor: color, boxShadow: `0px 0px 10px ${color}` }
+                    : styles.pipEmpty,
+                ]}
+              />
+            );
+          })}
+        </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
+  container: {
     flex: 1,
-    backgroundColor: '#0d120e',
+    backgroundColor: 'rgba(0, 152, 33, 0.15)',
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    minWidth: 48,
     overflow: 'hidden',
+    minWidth: 48,
   },
-  labelRow: {
+  buttonBar: {
+    height: 32,
+    backgroundColor: '#0d120e',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
   },
-  icon: {
-    width: 16,
-    height: 17,
+  btnHit: {
+    width: 21,
+    height: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  label: {
-    color: '#9dffb2',
+  barText: {
+    color: TEXT_COLOR,
     fontSize: 16,
     fontFamily: 'RobotoMono_400Regular',
     lineHeight: 20.8,
   },
-  gaugeContainer: {
-    width: 117,
-    height: 57,
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  valueContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveValue: {
-    position: 'absolute',
-    width: 117,
-    textAlign: 'center',
-    bottom: 0,
-    fontSize: 28,
+    color: TEXT_COLOR,
+    fontSize: 32,
     fontFamily: 'RobotoMono_700Bold',
-    lineHeight: 34,
+    lineHeight: 40,
+  },
+  pipRow: {
+    flexDirection: 'row',
+    gap: 4,
+    alignSelf: 'stretch',
+  },
+  pip: {
+    flex: 1,
+    height: 24,
+    borderWidth: 2,
+  },
+  pipFirst: {
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+  },
+  pipLast: {
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  pipEmpty: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderColor: 'transparent',
   },
 });
