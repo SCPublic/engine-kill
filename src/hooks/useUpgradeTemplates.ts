@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { UpgradeTemplate } from '../models/UpgradeTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function useUpgradeTemplates() {
-  const initial = battleScribeCache.getUpgradeResultSnapshot();
+  const initial = templatesCache.getUpgradeResultSnapshot();
   const [upgradeTemplates, setUpgradeTemplates] = useState<UpgradeTemplate[] | null>(
     () => initial.result?.upgrades ?? null
   );
@@ -19,13 +19,13 @@ export function useUpgradeTemplates() {
     let cancelled = false;
     (async () => {
       try {
-        if (reloadToken === 0 && battleScribeCache.getUpgradeResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getUpgradeResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
         if (!cancelled) setIsLoading(true);
         const res =
-          reloadToken === 0 ? await battleScribeCache.loadUpgradesOnce() : await battleScribeCache.reloadUpgrades();
+          reloadToken === 0 ? await templatesCache.loadUpgradesOnce() : await templatesCache.reloadUpgrades();
         if (cancelled) return;
         setUpgradeTemplates(res.upgrades);
         setWarnings(res.warnings);

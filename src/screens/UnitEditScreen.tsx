@@ -14,7 +14,11 @@ import WeaponSelectionModal from '../components/WeaponSelectionModal';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { useBannerTemplates } from '../hooks/useBannerTemplates';
 import { WeaponTemplate } from '../models/UnitTemplate';
-import { unitService } from '../services/unitService';
+import {
+  bannerArmWeaponIdsForKnightCount,
+  bannerWeaponsPerKnight,
+  unitService,
+} from '../services/unitService';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 import { useUpgradeTemplates } from '../hooks/useUpgradeTemplates';
 import { useTitanTemplates } from '../hooks/useTitanTemplates';
@@ -180,7 +184,38 @@ export default function UnitEditScreen({
   const weaponMounts = useMemo(() => {
     if (!unit) return [];
     if (unit.unitType === 'banner') {
-      return [];
+      const ids = unit.bannerWeaponIds ?? [];
+      const wpk = template ? bannerWeaponsPerKnight(template) : 2;
+      const pickWt = (idx: number) =>
+        ids[idx] ? effectiveWeapons.find((w) => w.id === ids[idx]) : undefined;
+      const buildWithStatus = (
+        wt: (typeof effectiveWeapons)[0] | undefined,
+        mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon'
+      ) => {
+        if (!wt) return null;
+        const built = unitService.createWeaponFromTemplate(wt);
+        const existing = unit[mount];
+        if (existing && existing.id === built.id) {
+          return { ...built, status: existing.status };
+        }
+        return built;
+      };
+      const mounts: {
+        key: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon';
+        label: string;
+        weapon: ReturnType<typeof buildWithStatus>;
+      }[] = [
+        { key: 'leftWeapon', label: 'L. ARM', weapon: buildWithStatus(pickWt(0), 'leftWeapon') },
+        { key: 'rightWeapon', label: 'R. ARM', weapon: buildWithStatus(pickWt(1), 'rightWeapon') },
+      ];
+      if (wpk >= 3) {
+        mounts.push({
+          key: 'carapaceWeapon',
+          label: '3RD',
+          weapon: buildWithStatus(pickWt(2), 'carapaceWeapon'),
+        });
+      }
+      return mounts;
     }
     const carapaceLabel =
       unit.templateId === 'questoris' ? 'OPTIONAL' : 'CARAPACE';
@@ -191,16 +226,7 @@ export default function UnitEditScreen({
         : []),
       { key: 'rightWeapon' as const, label: 'R. ARM', weapon: unit.rightWeapon },
     ];
-  }, [hasCarapaceWeapon, unit]);
-
-  const bannerWeaponCards = useMemo(() => {
-    if (!unit || unit.unitType !== 'banner' || !effectiveWeapons.length) return [];
-    return effectiveWeapons.map((wt) => ({
-      key: wt.id,
-      weapon: unitService.createWeaponFromTemplate(wt),
-      label: wt.name,
-    }));
-  }, [unit?.unitType, effectiveWeapons]);
+  }, [effectiveWeapons, hasCarapaceWeapon, template, unit]);
 
   const handleDamageChange = (location: 'head' | 'body' | 'legs', value: number) => {
     if (!unit) return;
@@ -270,6 +296,10 @@ export default function UnitEditScreen({
   );
 
   const handleOpenWeaponSelection = (mount: 'leftWeapon' | 'rightWeapon' | 'carapaceWeapon') => {
+    if (unit?.unitType === 'banner') {
+      setIsBannerCompositionOpen(true);
+      return;
+    }
     setSelectedMount(mount);
     setWeaponModalVisible(true);
   };
@@ -390,7 +420,13 @@ export default function UnitEditScreen({
         <View style={styles.damageSection}>
           {unit.unitType === 'banner' ? (() => {
             const bannerTemplate = bannerTemplates.find((t) => t.id === unit.templateId);
-            if (!bannerTemplate?.defaultStats?.damage) return <IonShieldSavesDisplay />;
+            const ionTable = bannerTemplate?.defaultStats?.ionShieldTable;
+            const showIonShieldTable = (ionTable?.rows?.length ?? 0) > 0;
+            if (!bannerTemplate?.defaultStats?.damage) {
+              return showIonShieldTable && ionTable ? (
+                <IonShieldSavesDisplay table={ionTable} />
+              ) : null;
+            }
             const d = bannerTemplate.defaultStats.damage;
             return (
               <>
@@ -418,7 +454,9 @@ export default function UnitEditScreen({
                   onDamageChange={(value) => handleDamageChange('legs', Math.max(1, Math.min(value, d.legs.max)))}
                   showArmorRolls={true}
                 />
-                <IonShieldSavesDisplay />
+                {showIonShieldTable && ionTable ? (
+                  <IonShieldSavesDisplay table={ionTable} />
+                ) : null}
               </>
             );
           })() : templateMatchesUnit && template ? (
@@ -472,10 +510,16 @@ export default function UnitEditScreen({
       {/* Weapon Mounts */}
       {weaponMounts.length > 0 && (
         <View style={styles.weaponSection}>
+          {unit.unitType === 'banner' ? (
+            <PaperText variant="bodySmall" style={[styles.textMuted, { marginBottom: spacing.sm }]}>
+              Weapon cards show the first model&apos;s loadout; all models use the same pattern from Banner composition.
+            </PaperText>
+          ) : null}
           <WeaponMountTabs
             mounts={weaponMounts}
             onChangeWeapon={handleOpenWeaponSelection}
             onToggleDisabled={handleToggleDisabled}
+            changeWeaponLabel={unit.unitType === 'banner' ? 'EDIT BANNER LOADOUT' : 'CHANGE WEAPON'}
           />
         </View>
       )}
@@ -561,10 +605,11 @@ export default function UnitEditScreen({
                   const meltagun = Math.min(K, Math.max(0, unit.bannerMeltagunCount ?? 0));
                   const stormspear = Math.min(K, Math.max(0, unit.bannerStormspearCount ?? 0));
                   const armWeapons = effectiveWeapons.filter((w) => w.mountType === 'arm' && w.id !== 'meltaguns');
-                  const requiredTotal = 2 * K;
+                  const wpnPerKnight = bannerWeaponsPerKnight(template);
+                  const requiredTotal = wpnPerKnight * K;
                   const setKnightCount = (newK: number) => {
                     const n = Math.min(maxK, Math.max(minK, newK));
-                    const nextIds = weaponIds.slice(0, 2 * n);
+                    const nextIds = bannerArmWeaponIdsForKnightCount(template, weaponIds, n);
                     void updateUnit({
                       ...unit,
                       bannerKnightCount: n,
@@ -612,17 +657,30 @@ export default function UnitEditScreen({
                             Total is {armWeaponTotal}; need {requiredTotal}.
                           </PaperText>
                         )}
-                        {armWeapons.map((w) => {
-                          const count = weaponIds.filter((id) => id === w.id).length;
-                          return (
-                            <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                              <PaperText variant="bodyMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</PaperText>
-                              <IconButton icon="minus" size={20} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
-                              <PaperText variant="titleMedium" style={styles.textPrimary}>{count}</PaperText>
-                              <IconButton icon="plus" size={20} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
-                            </View>
-                          );
-                        })}
+                        {(() => {
+                          const fixedIds = template.fixedBannerArmWeaponIds;
+                          if (fixedIds && fixedIds.length >= 2) {
+                            const names = fixedIds.map(
+                              (id) => template.availableWeapons.find((w) => w.id === id)?.name ?? '—'
+                            );
+                            return (
+                              <PaperText variant="bodySmall" style={[styles.textMuted, { marginTop: spacing.xs }]}>
+                                Fixed loadout per model: {names.join('; ')}.
+                              </PaperText>
+                            );
+                          }
+                          return armWeapons.map((w) => {
+                            const count = weaponIds.filter((id) => id === w.id).length;
+                            return (
+                              <View key={w.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                                <PaperText variant="bodyMedium" style={[styles.textPrimary, { flex: 1 }]} numberOfLines={1}>{w.name}</PaperText>
+                                <IconButton icon="minus" size={20} onPress={() => adjustWeaponCount(w.id, -1)} disabled={count <= 0} />
+                                <PaperText variant="titleMedium" style={styles.textPrimary}>{count}</PaperText>
+                                <IconButton icon="plus" size={20} onPress={() => adjustWeaponCount(w.id, 1)} disabled={armWeaponTotal >= requiredTotal} />
+                              </View>
+                            );
+                          });
+                        })()}
                       </View>
                       <View style={{ marginTop: spacing.md }}>
                         <PaperText variant="labelMedium" style={styles.textPrimary}>Meltaguns</PaperText>

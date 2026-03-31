@@ -8,7 +8,7 @@
 - Components: PascalCase matching the exported component name (`VoidShieldDisplay.tsx`, `WeaponMount.tsx`)
 - Screens: PascalCase with `Screen` suffix (`HomeScreen.tsx`, `UnitEditScreen.tsx`, `BattlegroupListScreen.tsx`)
 - Hooks: camelCase with `use` prefix (`useBreakpoint.ts`, `useTitanTemplates.ts`)
-- Services: camelCase singleton exported as const (`storageService`, `unitService`, `battleScribeCache`)
+- Services: camelCase singleton exported as const (`storageService`, `unitService`, `templatesCache`)
 - Models: PascalCase matching the primary interface (`Unit.ts`, `UnitTemplate.ts`, `Battlegroup.ts`)
 - Adapters: grouped by external source (`src/adapters/battlescribe/battlescribeAdapter.ts`)
 - Data files: camelCase (`bannerTemplates.ts`)
@@ -92,7 +92,7 @@
 - `console.error` for unrecoverable failures and storage errors
 - `console.warn` for data-source issues (BattleScribe parsing failures, missing fields)
 - `console.log` for debug traces; a few remain in production code (`updatePlasmaReactor`, `HomeScreen`)
-- Prefixed format for BattleScribe-related warnings: `[BattleScribe] message`; titan-data warnings: `[titan-data] message`
+- Prefixed format for template-load warnings: `[Templates] message`; titan-data warnings: `[titan-data] message`
 
 ## Logging
 

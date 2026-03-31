@@ -1,34 +1,38 @@
 import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
+import type { IonShieldTable } from '../models/UnitTemplate';
 import { colors, fontSize, radius, spacing } from '../theme/tokens';
 
-/** Ion shield save by knights-in-banner row and attack-strength column. "-" = no save. */
-const ION_SHIELD_TABLE: Record<string, Record<string, string>> = {
-  '1 Knight': { '1-6': '5+', '7': '6+', '8': '—', '9': '—', '10+': '—' },
-  '2-3 Knights': { '1-6': '4+', '7': '5+', '8': '6+', '9': '—', '10+': '—' },
-  '4+ Knights': { '1-6': '3+', '7': '4+', '8': '5+', '9': '6+', '10+': '—' },
-};
-
-const ROW_LABELS = ['1 Knight', '2-3 Knights', '4+ Knights'] as const;
 const COL_LABELS = ['1-6', '7', '8', '9', '10+'] as const;
+
+function formatSave(cell: string | null | undefined): string {
+  if (cell == null || cell === '') return '—';
+  if (cell === '-') return '—';
+  return cell;
+}
 
 const teal = '#8be39d';
 const tealBright = '#9dffb2';
 
-export default function IonShieldSavesDisplay() {
+export interface IonShieldSavesDisplayProps {
+  table: IonShieldTable;
+}
+
+export default function IonShieldSavesDisplay({ table }: Readonly<IonShieldSavesDisplayProps>) {
+  const rows = table.rows;
+  if (!rows?.length) return null;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>ION SHIELDS</Text>
 
       <View style={styles.table}>
-        {/* Top row: empty corner + ATTACK STRENGTH spanning columns */}
         <View style={styles.headerRow}>
           <View style={styles.cornerCell} />
           <View style={styles.headerSpan}>
             <Text style={styles.sectionHeader}>ATTACK STRENGTH</Text>
           </View>
         </View>
-        {/* Second row: KNIGHTS IN BANNER label + column labels (1-6, 7, 8, 9, 10+) */}
         <View style={styles.columnLabelsRow}>
           <View style={[styles.cell, styles.rowHeaderCell]}>
             <Text style={styles.sectionHeader}>KNIGHTS IN BANNER</Text>
@@ -39,17 +43,14 @@ export default function IonShieldSavesDisplay() {
             </View>
           ))}
         </View>
-        {/* Data rows */}
-        {ROW_LABELS.map((rowKey) => (
-          <View key={rowKey} style={styles.dataRow}>
+        {rows.map((row) => (
+          <View key={row.rowLabel} style={styles.dataRow}>
             <View style={[styles.cell, styles.rowHeaderCell]}>
-              <Text style={styles.cellLabel}>{rowKey}</Text>
+              <Text style={styles.cellLabel}>{row.rowLabel}</Text>
             </View>
-            {COL_LABELS.map((colKey) => (
-              <View key={colKey} style={styles.cell}>
-                <Text style={styles.cellValue}>
-                  {ION_SHIELD_TABLE[rowKey]?.[colKey] ?? '—'}
-                </Text>
+            {COL_LABELS.map((colLabel, colIdx) => (
+              <View key={`${row.rowLabel}-${colLabel}`} style={styles.cell}>
+                <Text style={styles.cellValue}>{formatSave(row.saves[colIdx])}</Text>
               </View>
             ))}
           </View>

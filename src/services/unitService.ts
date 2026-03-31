@@ -21,6 +21,26 @@ function weaponTemplateToWeapon(w: WeaponTemplate): Weapon {
   };
 }
 
+/** Weapons per model in banner composition (arms / fixed systems). Default 2; 3 when `fixedBannerArmWeaponIds` has three entries (e.g. Asterius). */
+export function bannerWeaponsPerKnight(template: UnitTemplate): number {
+  const n = template.fixedBannerArmWeaponIds?.length ?? 0;
+  return n > 2 ? n : 2;
+}
+
+/** Knight count must already be clamped to the template min/max. */
+export function bannerArmWeaponIdsForKnightCount(
+  template: UnitTemplate,
+  currentIds: string[],
+  knightCount: number
+): string[] {
+  const fixed = template.fixedBannerArmWeaponIds;
+  if (fixed && fixed.length >= 2) {
+    return Array.from({ length: knightCount }, () => [...fixed]).flat();
+  }
+  const wpk = 2;
+  return currentIds.slice(0, wpk * knightCount);
+}
+
 export const unitService = {
   // Create a unit from a template
   createUnitFromTemplate(
@@ -90,15 +110,17 @@ export const unitService = {
       ...(template.defaultStats.hasCarapaceWeapon && { carapaceWeapon: null }),
       stats: { ...template.defaultStats.stats },
       ...(template.unitType === 'banner' && (() => {
-        const k = Math.min(6, Math.max(3, template.minKnights ?? 3));
+        const minK = template.minKnights ?? 3;
+        const maxK = template.maxKnights ?? 6;
+        const k = Math.min(maxK, minK);
+        const initialWeaponIds = bannerArmWeaponIdsForKnightCount(template, [], k);
         return {
           structurePoints: {
             current: 1,
             max: template.defaultStats.structurePointsMax ?? template.defaultStats.damage.body.max,
           },
-          ionShieldSaves: template.defaultStats.ionShieldSaves ?? [],
           bannerKnightCount: k,
-          bannerWeaponIds: [],
+          bannerWeaponIds: initialWeaponIds,
           bannerMeltagunCount: 0,
           bannerStormspearCount: 0,
         };

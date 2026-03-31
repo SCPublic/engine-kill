@@ -1541,7 +1541,13 @@ export async function loadBannerTemplatesFromBattleScribe(
         hasCarapaceWeapon: hasCarapace,
         stats,
         structurePointsMax,
-        ionShieldSaves: ['Ion Shield Save: 5+'],
+        ionShieldTable: {
+          rows: [
+            { rowLabel: '1 Knight', saves: ['5+', '6+', null, null, null] },
+            { rowLabel: '2-3 Knights', saves: ['4+', '5+', '6+', null, null] },
+            { rowLabel: '4+ Knights', saves: ['3+', '4+', '5+', '6+', null] },
+          ],
+        },
       },
       availableWeapons,
       ...(ov?.minKnights !== undefined && { minKnights: ov.minKnights }),
@@ -1840,8 +1846,6 @@ function selectionEntryToManipleTemplate(se: XmlNode, byId: Map<string, XmlNode>
   // Reasonable fallback for known starter templates if constraints weren't discovered.
   const specialRule = extractFirstRuleText(se) ?? `${name}: (BattleScribe)`;
 
-  const allegiance = inferLegionAllegianceFromPublicationId(se.attributes.publicationId);
-
   return {
     id,
     name,
@@ -1849,7 +1853,6 @@ function selectionEntryToManipleTemplate(se: XmlNode, byId: Map<string, XmlNode>
     minTitans,
     maxTitans,
     specialRule,
-    ...(allegiance && allegiance !== 'unknown' ? { allegiance } : {}),
   };
 }
 
@@ -1914,7 +1917,6 @@ export async function loadManipleTemplatesFromBattleScribe(
         minTitans: existing.minTitans || m.minTitans,
         maxTitans: existing.maxTitans || m.maxTitans,
         specialRule: existing.specialRule || m.specialRule,
-        allegiance: existing.allegiance || m.allegiance,
       });
     }
   }

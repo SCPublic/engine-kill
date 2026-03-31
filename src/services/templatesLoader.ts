@@ -1,6 +1,6 @@
 /**
  * Single loader for app-ready templates from titan-data.
- * Fetches templates.json from the titan-data repo root
+ * Fetches templates.json from the titan-data repo root.
  * and returns typed titans, banners, maniples, legions, upgrades, princepsTraits, and warnings.
  * No override/merge at runtime; all template data comes from this file.
  */

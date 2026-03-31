@@ -5,20 +5,14 @@
 ## APIs & External Services
 
 **Game Data (Primary):**
-- SCPublic/titan-data GitHub repo - Engine Kill override data (chassis stats, damage tracks, weapon metadata, critical effects)
-  - SDK/Client: Native `fetch` API in `src/services/titanDataOverrides.ts`
+- SCPublic/titan-data GitHub repo — **single runtime file** `templates.json` at repo root
+  - SDK/Client: Native `fetch` in `src/services/templatesLoader.ts` → `src/services/templatesCache.ts`
   - Auth: None (public GitHub raw content)
-  - Base URL: `https://raw.githubusercontent.com/SCPublic/titan-data/master/`
-  - Files fetched: `engine-kill/chassis-overrides.json`, `engine-kill/chassis-aliases.json`, `engine-kill/damage-tracks.json`, `engine-kill/weapon-metadata.json`, `engine-kill/critical-effects.json`
-  - Cache behavior: In-flight deduplication only; no persistent cache; `cache: 'no-store'` on all requests
+  - URL: `{baseUrl}templates.json` where base URL is titan-data root (e.g. `https://raw.githubusercontent.com/SCPublic/titan-data/master/`)
+  - In-memory cache with deduplicated loading via `templatesCache`
 
-**Game Data (Secondary - BattleScribe):**
-- BSData/adeptus-titanicus GitHub repo - BattleScribe XML game data (titan templates, maniples, legions, upgrades, princeps traits)
-  - SDK/Client: Native `fetch` API in `src/adapters/battlescribe/battlescribeAdapter.ts`
-  - Auth: None (public GitHub raw content)
-  - Base URL: `https://raw.githubusercontent.com/BSData/adeptus-titanicus/master/`
-  - Parsed via custom XML parser in `src/adapters/battlescribe/xml.ts`
-  - In-memory cache with deduplicated loading via `src/services/battleScribeCache.ts`
+**BattleScribe adapter (not used at runtime):**
+- `src/adapters/battlescribe/` — legacy XML tooling only; app does not fetch BattleScribe or per-file overrides at runtime.
 
 **GitHub REST API:**
 - Used to check latest commit SHA for update detection (UI display)
@@ -43,7 +37,7 @@
 - No runtime file system reads/writes beyond AsyncStorage
 
 **Caching:**
-- In-memory module-level cache for BattleScribe data via `src/services/battleScribeCache.ts`
+- In-memory module-level cache for template JSON via `src/services/templatesCache.ts`
 - In-memory in-flight deduplication for titan-data override fetches via `src/services/titanDataOverrides.ts`
 - No persistent disk cache for remote data
 
@@ -65,7 +59,7 @@
 
 **Logs:**
 - `console.error` for storage failures in `src/services/storageService.ts`
-- `console.warn` for BattleScribe data loading issues in `src/services/battleScribeCache.ts`, `src/hooks/useTitanTemplates.ts`, and `src/services/titanDataOverrides.ts`
+- `console.warn` for template data loading issues in `src/services/templatesCache.ts`, `src/hooks/useTitanTemplates.ts`, and `src/services/titanDataOverrides.ts`
 - `console.log` for plasma reactor updates in `src/context/GameContext.tsx`
 
 ## CI/CD & Deployment

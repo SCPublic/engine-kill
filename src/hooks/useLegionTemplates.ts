@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LegionTemplate } from '../models/LegionTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function useLegionTemplates() {
-  const initial = battleScribeCache.getLegionResultSnapshot();
+  const initial = templatesCache.getLegionResultSnapshot();
   const [remoteLegionTemplates, setRemoteLegionTemplates] = useState<LegionTemplate[] | null>(
     () => initial.result?.legions ?? null
   );
@@ -20,14 +20,14 @@ export function useLegionTemplates() {
     (async () => {
       try {
         // If we already have cached data and this isn't a forced reload, don't refetch on remount.
-        if (reloadToken === 0 && battleScribeCache.getLegionResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getLegionResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
 
         if (!cancelled) setIsLoading(true);
         const res =
-          reloadToken === 0 ? await battleScribeCache.loadLegionsOnce() : await battleScribeCache.reloadLegions();
+          reloadToken === 0 ? await templatesCache.loadLegionsOnce() : await templatesCache.reloadLegions();
         if (cancelled) return;
         setRemoteLegionTemplates(res.legions);
         setWarnings(res.warnings);

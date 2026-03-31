@@ -1,7 +1,7 @@
 /**
- * Regression test: UnitEditScreen and hooks must not use BattleScribe weapon loaders at runtime.
+ * Regression test: UnitEditScreen and hooks must not use generator XML weapon loaders at runtime.
  * REFACTOR_PROGRESS step 3 — template.availableWeapons / template.specialRules only.
- * See docs/TESTING_REFACTOR_PROGRESS.md.
+ * See docs/TESTING_TEMPLATES.md.
  */
 
 import * as fs from 'fs';
@@ -29,7 +29,7 @@ function getAllTsFiles(dir: string): string[] {
   return results;
 }
 
-describe('No runtime BattleScribe weapon loaders in app code', () => {
+describe('No runtime XML weapon loaders in app code', () => {
   const projectRoot = path.resolve(__dirname, '../..');
 
   for (const dir of APP_DIRS) {
@@ -49,8 +49,8 @@ describe('No runtime BattleScribe weapon loaders in app code', () => {
 
 /**
  * REFACTOR_PROGRESS step 4 — adapter and titanDataOverrides must not be in app runtime.
- * App code (everything under src/ except src/adapters/) must not import the BattleScribe
- * adapter or titanDataOverrides; those exist only for scripts (e.g. generate-templates.ts).
+ * App code (everything under src/ except src/adapters/) must not import the generator
+ * adapter or titanDataOverrides; not bundled for app runtime.
  */
 describe('No adapter or titanDataOverrides in app runtime (step 4)', () => {
   const projectRoot = path.resolve(__dirname, '../..');

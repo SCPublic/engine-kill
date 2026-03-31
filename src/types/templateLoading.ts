@@ -1,6 +1,6 @@
 /**
- * Types for template loading used by the app (templatesLoader, battleScribeCache, hooks).
- * Defined here so the app runtime does not depend on the BattleScribe adapter or titanDataOverrides.
+ * Types for template loading used by the app (templatesLoader, templatesCache, hooks).
+ * Defined here so the app runtime does not depend on the generator adapter or titanDataOverrides.
  */
 
 import type { LegionTemplate } from '../models/LegionTemplate';

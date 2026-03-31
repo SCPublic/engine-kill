@@ -9,9 +9,11 @@ export const TITAN_DATA_BASE_URL =
   'https://raw.githubusercontent.com/SCPublic/titan-data/master/';
 
 /**
- * Data source used by the app. For local/web dev, set EXPO_PUBLIC_DATA_BASE_URL to avoid CORS
- * (e.g. serve titan-data: npx serve path/to/titan-data -p 3333, then
- * EXPO_PUBLIC_DATA_BASE_URL=http://localhost:3333/).
+ * Data source used by the app. For local dev, set EXPO_PUBLIC_DATA_BASE_URL.
+ * Expo Web runs on another origin (e.g. :8081); the static server for titan-data must allow CORS
+ * (e.g. `npx serve path/to/titan-data -p 3333 --cors`, then
+ * `EXPO_PUBLIC_DATA_BASE_URL=http://localhost:3333/`).
+ * Physical devices: use your machine's LAN IP, not localhost.
  */
 export const DEFAULT_DATA_BASE_URL =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_DATA_BASE_URL) || TITAN_DATA_BASE_URL;
@@ -31,7 +33,7 @@ export const ENGINE_KILL_COMMITS_API_URL =
   'https://api.github.com/repos/SCPublic/engine-kill/commits/main';
 
 /**
- * Legacy template ids (BattleScribe selectionEntry ids) → canonical chassis id.
+ * Legacy template ids (selection entry ids, e.g. bs:…) → canonical chassis id.
  * Used so units saved with BS ids still resolve to the correct template (e.g. Warhound special rules).
  */
 export const TEMPLATE_ID_ALIASES: Record<string, string> = {

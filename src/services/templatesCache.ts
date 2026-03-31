@@ -1,5 +1,5 @@
 /**
- * Single-fetch template cache. Loads engine-kill/generated/templates.json once
+ * Single-fetch template cache. Loads titan-data root templates.json once
  * and exposes titans, banners, maniples, legions, upgrades, and princeps traits
  * via the same snapshot/load API that hooks and screens already use.
  * No override/merge at runtime; templates come only from templates.json.
@@ -91,7 +91,7 @@ function toBannerResult(p: TemplatesPayload): BannerLoadResult {
   return { templates: p.banners, warnings: p.warnings };
 }
 
-export const battleScribeCache = {
+export const templatesCache = {
   // Single payload load (used by all category loaders)
   async loadTemplatesPayloadOnce(): Promise<TemplatesPayload> {
     return loadPayloadOnce();

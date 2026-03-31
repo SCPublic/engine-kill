@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ManipleTemplate } from '../models/ManipleTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function useManipleTemplates() {
-  const initial = battleScribeCache.getManipleResultSnapshot();
+  const initial = templatesCache.getManipleResultSnapshot();
   const [remoteManipleTemplates, setRemoteManipleTemplates] = useState<ManipleTemplate[] | null>(
     () => initial.result?.maniples ?? null
   );
@@ -20,14 +20,14 @@ export function useManipleTemplates() {
     (async () => {
       try {
         // If we already have cached data and this isn't a forced reload, don't refetch on remount.
-        if (reloadToken === 0 && battleScribeCache.getManipleResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getManipleResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
 
         if (!cancelled) setIsLoading(true);
         const res =
-          reloadToken === 0 ? await battleScribeCache.loadManiplesOnce() : await battleScribeCache.reloadManiples();
+          reloadToken === 0 ? await templatesCache.loadManiplesOnce() : await templatesCache.reloadManiples();
         if (cancelled) return;
         setRemoteManipleTemplates(res.maniples);
         setWarnings(res.warnings);

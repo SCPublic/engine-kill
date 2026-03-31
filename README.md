@@ -1,6 +1,8 @@
 # engine-kill
 
-Engine Kill is a mobile app for iOS and Android to help manage titan-scale tabletop battles. Track your units (void shields, heat, damage, weapons) and view enemy status in real-time.
+Engine Kill is a mobile app for iOS and Android to help manage titan-scale tabletop battles.
+
+**AI / data onboarding:** See **[`docs/AGENT_DATA_CONTEXT.md`](docs/AGENT_DATA_CONTEXT.md)** for titan-data, `templates.json`, and the data audit in one place. Track your units (void shields, heat, damage, weapons) and view enemy status in real-time.
 
 ## Features
 

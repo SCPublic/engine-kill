@@ -65,7 +65,7 @@ engine-kill/                    # Project root
 - Key files: `bannerTemplates.ts`
 
 **`src/hooks/`:**
-- Purpose: Custom hooks that wrap the `battleScribeCache` singleton and expose remote templates with React loading state
+- Purpose: Custom hooks that wrap the `templatesCache` singleton and expose remote templates with React loading state
 - Contains: One hook per template domain
 - Key files: `useTitanTemplates.ts`, `useManipleTemplates.ts`, `useLegionTemplates.ts`, `useUpgradeTemplates.ts`, `usePrincepsTraitTemplates.ts`, `useBreakpoint.ts`
 
@@ -82,7 +82,7 @@ engine-kill/                    # Project root
 **`src/services/`:**
 - Purpose: Logic and I/O with no direct React dependencies
 - Contains: AsyncStorage persistence, unit factory/mutation helpers, remote data caching, external JSON fetching
-- Key files: `storageService.ts`, `unitService.ts`, `battleScribeCache.ts`, `titanDataOverrides.ts`
+- Key files: `storageService.ts`, `unitService.ts`, `templatesCache.ts`, `titanDataOverrides.ts`
 
 **`src/theme/`:**
 - Purpose: Design system constants used throughout all UI files
@@ -111,7 +111,7 @@ engine-kill/                    # Project root
 - `src/context/GameContext.tsx`: All game state, actions, and persistence coordination
 - `src/services/unitService.ts`: Unit creation and mutation helpers (pure functions)
 - `src/services/storageService.ts`: AsyncStorage persistence interface
-- `src/services/battleScribeCache.ts`: Singleton cache for all remote template data
+- `src/services/templatesCache.ts`: Singleton cache for all remote template data
 - `src/adapters/battlescribe/battlescribeAdapter.ts`: BattleScribe XML to `UnitTemplate` translation
 
 **Models:**
@@ -132,7 +132,7 @@ engine-kill/                    # Project root
 - Screens: `PascalCase` with `Screen` suffix — e.g., `HomeScreen.tsx`, `UnitEditScreen.tsx`
 - Components: `PascalCase` — e.g., `VoidShieldDisplay.tsx`, `WeaponMount.tsx`
 - Hooks: `camelCase` with `use` prefix — e.g., `useTitanTemplates.ts`, `useBreakpoint.ts`
-- Services: `camelCase` with `Service` or `Cache` suffix — e.g., `storageService.ts`, `battleScribeCache.ts`
+- Services: `camelCase` with `Service` or `Cache` suffix — e.g., `storageService.ts`, `templatesCache.ts`
 - Models: `PascalCase` matching the interface name — e.g., `Unit.ts`, `UnitTemplate.ts`
 - Utils: `camelCase` — e.g., `constants.ts`, `titanScaleOrder.ts`
 
@@ -165,11 +165,11 @@ engine-kill/                    # Project root
 
 **New hook for remote data:**
 - Implementation: `src/hooks/useNewThing.ts`
-- Follow pattern of `useTitanTemplates.ts`: wrap `battleScribeCache`, manage `isLoading`, expose `reloadToken`
+- Follow pattern of `useTitanTemplates.ts`: wrap `templatesCache`, manage `isLoading`, expose `reloadToken`
 
 **New adapter loader (new BattleScribe data type):**
 1. Add loader function to `src/adapters/battlescribe/battlescribeAdapter.ts`
-2. Add a `CacheEntry` and methods to `src/services/battleScribeCache.ts`
+2. Add a `CacheEntry` and methods to `src/services/templatesCache.ts`
 3. Create hook in `src/hooks/useNewThingTemplates.ts`
 
 **New persistent data type:**

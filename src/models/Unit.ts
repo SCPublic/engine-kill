@@ -105,7 +105,8 @@ export interface Unit {
 
   // Banner composition: variable knights and weapon loadouts
   bannerKnightCount?: number; // e.g. 3–6 for Questoris
-  bannerWeaponIds?: string[]; // 2 weapons per knight (arm only), length = 2 * bannerKnightCount
+  /** Flat list: `bannerWeaponsPerKnight(template)` weapons per model (usually 2; 3 for e.g. Asterius). */
+  bannerWeaponIds?: string[];
   bannerMeltagunCount?: number; // 0 to bannerKnightCount (max 1 per knight)
   bannerStormspearCount?: number; // 0 to bannerKnightCount (max 1 per knight)
   

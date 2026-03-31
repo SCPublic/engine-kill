@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MissingChassisMaxData } from '../types/templateLoading';
 import { UnitTemplate } from '../models/UnitTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function useTitanTemplates() {
-  const initial = battleScribeCache.getTitanResultSnapshot();
+  const initial = templatesCache.getTitanResultSnapshot();
   const [remoteTitanTemplates, setRemoteTitanTemplates] = useState<UnitTemplate[] | null>(
     () => initial.result?.templates ?? null
   );
@@ -27,14 +27,14 @@ export function useTitanTemplates() {
     (async () => {
       try {
         // If we already have cached data and this isn't a forced reload, don't refetch on remount.
-        if (reloadToken === 0 && battleScribeCache.getTitanResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getTitanResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
 
         if (!cancelled) setIsLoading(true);
         const res =
-          reloadToken === 0 ? await battleScribeCache.loadTitansOnce() : await battleScribeCache.reloadTitans();
+          reloadToken === 0 ? await templatesCache.loadTitansOnce() : await templatesCache.reloadTitans();
         if (cancelled) return;
         setRemoteTitanTemplates(res.templates);
         setMissingMaxData(res.missingMaxData);
@@ -50,7 +50,7 @@ export function useTitanTemplates() {
 
         if (loggableMissing.length) {
           console.warn(
-            `[BattleScribe] Titans missing chassis max data: ${loggableMissing
+            `[Templates] Titans missing chassis max data: ${loggableMissing
               .map((m) => `${m.name} (${m.missing.join(', ')})`)
               .join(' | ')}`
           );
@@ -58,7 +58,7 @@ export function useTitanTemplates() {
 
         if (res.legendTitans.length) {
           console.warn(
-            `[BattleScribe] Titans of Legend detected: ${res.legendTitans
+            `[Templates] Titans of Legend detected: ${res.legendTitans
               .map((t) => t.name)
               .join(' | ')}`
           );

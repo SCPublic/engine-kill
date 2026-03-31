@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { UnitTemplate } from '../models/UnitTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function useBannerTemplates() {
-  const initial = battleScribeCache.getBannerResultSnapshot();
+  const initial = templatesCache.getBannerResultSnapshot();
   const [bannerTemplates, setBannerTemplates] = useState<UnitTemplate[] | null>(
     () => initial.result?.templates ?? null
   );
@@ -19,13 +19,13 @@ export function useBannerTemplates() {
     let cancelled = false;
     (async () => {
       try {
-        if (reloadToken === 0 && battleScribeCache.getBannerResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getBannerResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
         if (!cancelled) setIsLoading(true);
         const res =
-          reloadToken === 0 ? await battleScribeCache.loadBannersOnce() : await battleScribeCache.reloadBanners();
+          reloadToken === 0 ? await templatesCache.loadBannersOnce() : await templatesCache.reloadBanners();
         if (cancelled) return;
         setBannerTemplates(res.templates);
         setWarnings(res.warnings);

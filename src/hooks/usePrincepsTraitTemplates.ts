@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PrincepsTraitTemplate } from '../models/PrincepsTraitTemplate';
-import { battleScribeCache } from '../services/battleScribeCache';
+import { templatesCache } from '../services/templatesCache';
 
 export function usePrincepsTraitTemplates() {
-  const initial = battleScribeCache.getPrincepsTraitResultSnapshot();
+  const initial = templatesCache.getPrincepsTraitResultSnapshot();
   const [traitTemplates, setTraitTemplates] = useState<PrincepsTraitTemplate[] | null>(
     () => initial.result?.traits ?? null
   );
@@ -19,15 +19,15 @@ export function usePrincepsTraitTemplates() {
     let cancelled = false;
     (async () => {
       try {
-        if (reloadToken === 0 && battleScribeCache.getPrincepsTraitResultSnapshot().status === 'loaded') {
+        if (reloadToken === 0 && templatesCache.getPrincepsTraitResultSnapshot().status === 'loaded') {
           if (!cancelled) setIsLoading(false);
           return;
         }
         if (!cancelled) setIsLoading(true);
         const res =
           reloadToken === 0
-            ? await battleScribeCache.loadPrincepsTraitsOnce()
-            : await battleScribeCache.reloadPrincepsTraits();
+            ? await templatesCache.loadPrincepsTraitsOnce()
+            : await templatesCache.reloadPrincepsTraits();
         if (cancelled) return;
         setTraitTemplates(res.traits);
         setWarnings(res.warnings);
