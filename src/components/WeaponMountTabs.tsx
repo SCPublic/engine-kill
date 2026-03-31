@@ -163,8 +163,12 @@ export default function WeaponMountTabs({
             {/* Dice / Str + Traits + Special Rules */}
             <View style={styles.statsBlock}>
               <View style={styles.statsRow}>
-                <Text style={styles.statLabel}>Dice | Str:</Text>
-                <Text style={styles.statValue}>{weapon.dice} | {weapon.strength}</Text>
+                <Text style={styles.statLabel}>Dice:</Text>
+                <Text style={styles.statValue}>{weapon.dice}</Text>
+              </View>
+              <View style={styles.statsRow}>
+                <Text style={styles.statLabel}>Str:</Text>
+                <Text style={styles.statValue}>{weapon.strength}</Text>
               </View>
 
               {weapon.traits && weapon.traits.length > 0 && (

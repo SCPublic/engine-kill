@@ -149,9 +149,8 @@ export default function WeaponSelectionModal({
               </View>
 
               {/* Dice / Str */}
-              <Text style={styles.diceStat}>
-                Dice | Str: {weapon.dice} | {weapon.strength}
-              </Text>
+              <Text style={styles.diceStat}>Dice: {weapon.dice}</Text>
+              <Text style={styles.diceStat}>Str: {weapon.strength}</Text>
 
               {/* Traits */}
               {weapon.traits.length > 0 && (
